@@ -3,9 +3,13 @@ import pick = require('lodash/pick');
 import times = require('lodash/times');
 import merge = require('lodash/merge');
 import bluebird = require('bluebird');
+import assert = require('assert');
 import { MongoClient, Collection } from 'mongodb';
 import { EventEmitter } from 'eventemitter3';
 import Debug = require('debug');
+import DateHelper from './DateHelper';
+import { IAddMessageOptions } from './types';
+
 const debug = Debug('mongodb-promise-queue:queue');
 
 // const debug = console.log;
@@ -25,14 +29,6 @@ export interface ISubscriptionOptions {
   pollInterval?: number;
 }
 
-function now() {
-  return new Date();
-}
-
-function nowPlusSecs(secs) {
-  return new Date(Date.now() + secs * 1000);
-}
-
 enum MessageEvent {
   wait = 'wait',
   active = 'active',
@@ -49,21 +45,44 @@ export default class Queue extends EventEmitter {
   private options: ISubscriptionOptions;
   private collectionName: string;
 
-  constructor(
-    private client: MongoClient,
-    private topic: string,
-    private queueName: string,
-    opts: ISubscriptionOptions = {}
-  ) {
+  constructor(private client: MongoClient, private queueName: string, opts: ISubscriptionOptions = {}) {
     super();
+    assert.ok(queueName, 'QueueName is required');
     this.options = merge({}, DEFAULT_OPTS, opts);
-    this.collectionName = `${this.topic}_${this.queueName}`;
+    this.collectionName = this.queueName;
     this.collection = this.client.db().collection(this.collectionName);
   }
 
-  async initialize() {
+  public async initialize() {
     await this.client.db().createCollection(this.collectionName);
     await this.createIndexes();
+  }
+
+  public async add(payload, opts: IAddMessageOptions = {}) {
+    assert.ok(this.client, '');
+    const delay = opts.delay || this.options.delay;
+    const priority = opts.priority || 1;
+
+    const createdAt = new Date();
+    const visible = delay ? DateHelper.nowPlusSecs(delay) : DateHelper.now();
+    const collection = this.client.db().collection(this.collectionName);
+
+    const payloadArray = payload instanceof Array ? payload : [payload];
+    // Insert many
+    if (payloadArray.length === 0) {
+      const errMsg = 'Queue.publish(): Array payload length must be greater than 0';
+      throw new Error(errMsg);
+    }
+    const messages = payloadArray.map(payload => ({
+      visible,
+      createdAt,
+      priority,
+      payload
+    }));
+    const result = await collection.insertMany(messages);
+
+    // These need to be converted because they're in a weird format.
+    return result.insertedIds;
   }
 
   public async subscribe(messageHandler) {
@@ -74,28 +93,6 @@ export default class Queue extends EventEmitter {
     this.setupPolling();
 
     return this;
-  }
-
-  public setupPolling() {
-    const interval = setInterval(async () => {
-      if (this.status !== 'started') return;
-
-      const idleConsumers = this.options.concurrency - this.busyConsumers;
-      debug(`subscribe: ${idleConsumers} idle consumers found on a pool of ${this.options.concurrency}`);
-
-      if (!idleConsumers) {
-        debug('subscribe: no consumers free, skipping');
-        return null;
-      }
-
-      const messages = await this.getMany(idleConsumers);
-      if (!messages.length) return null;
-      debug(`subscribe: got ${messages.length}`);
-      this.busyConsumers += messages.length;
-      await bluebird.map(messages, msg => this.handler(msg));
-    }, this.options.pollInterval * 1000);
-
-    this.intervalHandles.push(interval);
   }
 
   public subscribeWithChangeStream() {
@@ -125,7 +122,29 @@ export default class Queue extends EventEmitter {
     return this;
   }
 
-  wrapHandler(handler) {
+  private setupPolling() {
+    const interval = setInterval(async () => {
+      if (this.status !== 'started') return;
+
+      const idleConsumers = this.options.concurrency - this.busyConsumers;
+      debug(`subscribe: ${idleConsumers} idle consumers found on a pool of ${this.options.concurrency}`);
+
+      if (!idleConsumers) {
+        debug('subscribe: no consumers free, skipping');
+        return null;
+      }
+
+      const messages = await this.getMany(idleConsumers);
+      if (!messages.length) return null;
+      debug(`subscribe: got ${messages.length}`);
+      this.busyConsumers += messages.length;
+      await bluebird.map(messages, msg => this.handler(msg));
+    }, this.options.pollInterval * 1000);
+
+    this.intervalHandles.push(interval);
+  }
+
+  private wrapHandler(handler) {
     return async (msg): Promise<any> => {
       // this.debug(`msg._id: ${msg._id}`);
       // this.debug(`msg.ack: ${msg.ack}`);
@@ -151,11 +170,11 @@ export default class Queue extends EventEmitter {
     };
   }
 
-  markAsStarted(msg) {
+  private markAsStarted(msg) {
     return this.collection.findOneAndUpdate({ _id: msg._id }, { $set: { startedAt: new Date() } });
   }
 
-  async handleSuccess(msg, result) {
+  private async handleSuccess(msg, result) {
     // this.debug(`Success - msg._id: ${msg._id}`);
     const ackResult = await this.ack(msg.ack, result);
     this.emit(MessageEvent.completed, ackResult);
@@ -165,7 +184,7 @@ export default class Queue extends EventEmitter {
     // return this.collection.findOneAndUpdate({ _id: msg._id }, { $set: { result, success: true } });
   }
 
-  async handleError(msg, error) {
+  private async handleError(msg, error) {
     const serializedError = pick(error, Object.getOwnPropertyNames(error));
     // this.debug(`Error - msg._id: ${msg._id}, error:`, serializedError);
     const errorItem = {
@@ -184,16 +203,18 @@ export default class Queue extends EventEmitter {
     return errorResult;
   }
 
-  async getMany(count, opts: ISubscriptionOptions = {}) {
+  public async getMany(count, opts: ISubscriptionOptions = {}) {
     debug(`getMany: count ${count}, options: ${JSON.stringify(opts || {})}`);
     const visibility = opts.visibility || this.options.visibility;
+
+    const now = DateHelper.now();
 
     const messages = await bluebird.map(
       times(count),
       async () => {
         const query = {
           deletedAt: null,
-          visible: { $lte: now() }
+          visible: { $lte: now }
         };
 
         const sort = {
@@ -204,7 +225,7 @@ export default class Queue extends EventEmitter {
           $inc: { tries: 1 },
           $set: {
             ack: uuid(),
-            visible: nowPlusSecs(visibility)
+            visible: DateHelper.nowPlusSecs(visibility)
           }
         };
         const result = await this.collection.findOneAndUpdate(query, update, {
@@ -241,12 +262,12 @@ export default class Queue extends EventEmitter {
     }*/
   }
 
-  async get(opts: ISubscriptionOptions = {}) {
+  public async get(opts: ISubscriptionOptions = {}) {
     const visibility = opts.visibility || this.options.visibility;
 
     const query = {
       deletedAt: null,
-      visible: { $lte: now() }
+      visible: { $lte: DateHelper.now() }
     };
 
     const sort = {
@@ -257,7 +278,7 @@ export default class Queue extends EventEmitter {
       $inc: { tries: 1 },
       $set: {
         ack: uuid(),
-        visible: nowPlusSecs(visibility)
+        visible: DateHelper.nowPlusSecs(visibility)
       }
     };
 
@@ -297,13 +318,13 @@ export default class Queue extends EventEmitter {
 
     const query = {
       ack,
-      visible: { $gt: now() },
+      visible: { $gt: DateHelper.now() },
       deletedAt: null
     };
 
     const update = {
       $set: {
-        visible: nowPlusSecs(visibility)
+        visible: DateHelper.nowPlusSecs(visibility)
       }
     };
 
@@ -323,13 +344,13 @@ export default class Queue extends EventEmitter {
     /*await this.connect();*/
     const query = {
       ack,
-      visible: { $gt: now() },
+      visible: { $gt: DateHelper.now() },
       deletedAt: null
     };
 
     const update = {
       $set: {
-        deletedAt: now(),
+        deletedAt: DateHelper.now(),
         result
       }
     };
@@ -351,13 +372,13 @@ export default class Queue extends EventEmitter {
 
     const query = {
       ack,
-      visible: { $gt: now() },
+      visible: { $gt: DateHelper.now() },
       deletedAt: null
     };
 
     const update = {
       $set: {
-        visible: nowPlusSecs(delay)
+        visible: DateHelper.nowPlusSecs(delay)
       },
       $unset: {
         ack: ''
@@ -398,7 +419,7 @@ export default class Queue extends EventEmitter {
     /*await this.connect();*/
     const query = {
       deletedAt: null,
-      visible: { $lte: now() }
+      visible: { $lte: DateHelper.now() }
     };
 
     return await this.collection.countDocuments(query);
@@ -410,7 +431,7 @@ export default class Queue extends EventEmitter {
     /*await this.connect();*/
     const query = {
       ack: { $exists: true },
-      visible: { $gt: now() },
+      visible: { $gt: DateHelper.now() },
       deletedAt: null
     };
 

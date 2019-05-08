@@ -18,7 +18,7 @@ describe('clean', () => {
   });
 
   it('checks clean does not change an empty queue', async () => {
-    queue = new Queue(client, 'myTopic', 'queue');
+    queue = new Queue(client, 'myTopic_queue');
     await queue.initialize();
     should(await queue.size()).be.equal(0);
     should(await queue.total()).be.equal(0);
@@ -28,7 +28,7 @@ describe('clean', () => {
   });
 
   it('check only ACKed messages are deleted', async () => {
-    queue = new Queue(client, 'myTopic', 'queue');
+    queue = new Queue(client, 'myTopic_queue');
     await queue.initialize();
     should(await channel.publish('Hello, World!')).be.ok();
     await queue.clean();

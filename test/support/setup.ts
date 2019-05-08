@@ -1,7 +1,6 @@
 import mongodb = require('mongodb');
 
 process.env.MONGODB_URL = 'mongodb://localhost:27017/mongodb-queue';
-process.env.DEBUG = 'mongdb-promise-queue*';
 
 export default async () => {
   const client = await mongodb.MongoClient.connect(process.env.MONGODB_URL, { useNewUrlParser: true });

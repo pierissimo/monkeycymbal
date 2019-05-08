@@ -4,35 +4,19 @@ import bluebird = require('bluebird');
 import Queue, { ISubscriptionOptions } from './Queue';
 import Debug = require('debug');
 const debug = Debug('mongodb-promise-queue:channel');
+import DateHelper from './DateHelper';
+import { IQueueOptions, IPublishOptions } from './types';
+
 // const debug = console.log;
-
-interface IQueueOptions {
-  deadQueueName?: string;
-  visibility?: number;
-  delay?: number;
-}
-
-interface IPublishOptions extends IQueueOptions {
-  priority?: number;
-}
 
 const DEFAULT_OPTS = {
   delay: 0
 };
 
-function now() {
-  return new Date();
-}
-
-function nowPlusSecs(secs) {
-  return new Date(Date.now() + secs * 1000);
-}
-
 // the Queue object itself
 export default class Channel {
   connectionUrl?: string;
   isConnected: boolean;
-
   topic: string;
   client: MongoClient;
   collection: Collection;
@@ -93,7 +77,7 @@ export default class Channel {
     const priority = opts.priority || 1;
 
     const createdAt = new Date();
-    const visible = delay ? nowPlusSecs(delay) : now();
+    const visible = delay ? DateHelper.nowPlusSecs(delay) : DateHelper.now();
 
     const result = await bluebird.map(queues, async collectionName => {
       const collection = this.client.db().collection(collectionName);
@@ -131,7 +115,9 @@ export default class Channel {
       opts
     );
 
-    const subscription = new Queue(this.client, this.topic, queueName, options);
+    const fullQueueName = `${this.topic}_${queueName}`;
+
+    const subscription = new Queue(this.client, fullQueueName, options);
     return subscription.subscribe(messageHandler);
   }
 }
