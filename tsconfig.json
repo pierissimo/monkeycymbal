@@ -22,13 +22,8 @@
     "watch": false,
     "emitDecoratorMetadata": true,
     "esModuleInterop": true,
-    "lib": [
-      "es7"
-    ]
+    "lib": ["es7"]
   },
-  "include": [
-    "src/**/*",
-    "test/**/*",
-    "examples/**/*"
-  ]
+  "include": ["src/**/*", "examples/**/*"],
+  "exclude": ["../node_modules", "./test"]
 }

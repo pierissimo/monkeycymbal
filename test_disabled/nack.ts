@@ -1,6 +1,6 @@
 import bluebird from 'bluebird';
-import setup from './support/setup';
-import MongoDbQueue from '../src/lib/index';
+import setup from '../test/support/setup';
+import MongoDbQueue from '../src/lib';
 
 describe('nack', () => {
   let client;
@@ -16,7 +16,7 @@ describe('nack', () => {
   });
 
   it('checks nack functionality', async () => {
-    expect(await queue.add('Hello, World!')).toBeDefined();
+    expect(await queue.publish('Hello, World!')).toBeDefined();
     let msg = await queue.get();
     expect(msg._id).toBeDefined();
 
@@ -53,7 +53,7 @@ describe('nack', () => {
   });
 
   it('checks nack with delay functionality', async () => {
-    expect(await queue.add('Hello, World!')).toBeDefined();
+    expect(await queue.publish('Hello, World!')).toBeDefined();
     let msg = await queue.get();
     expect(msg._id).toBeDefined();
 

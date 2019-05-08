@@ -5,7 +5,7 @@
 		"arrow-parens": [2, "as-needed"],
 		"linebreak-style": 0,
 		"padded-blocks": 0,
-		"indent": [1, "tab"],
+		"indent": [2, 2],
 		"no-underscore-dangle": [2, { "allow": ["_id", "__v"] } ],
 		"no-param-reassign": [2, { "props": false }],
 		"new-cap": [2, { "capIsNewExceptions": ["Router", "ObjectId"] }],

@@ -1,5 +1,5 @@
-import setup from './support/setup';
-import MongoDbQueue from '../src/lib/index';
+import setup from '../test/support/setup';
+import MongoDbQueue from '../src/lib';
 
 const TOTAL = 250;
 
@@ -22,7 +22,7 @@ describe('many', () => {
       messagesToQueue.push(`no=${i}`);
     }
 
-    const messageIds = await queue.add(messagesToQueue);
+    const messageIds = await queue.publish(messagesToQueue);
     expect(messageIds.length).toBe(TOTAL);
     const messages = [];
     let message;
@@ -43,7 +43,7 @@ describe('many', () => {
     queue = new MongoDbQueue(client, 'many-2');
     const messageIds = [];
     for (let i = 0; i < TOTAL; i += 1) {
-      messageIds.push(await queue.add(`no=${i}`));
+      messageIds.push(await queue.publish(`no=${i}`));
     }
     expect(messageIds.length).toBe(TOTAL);
 
@@ -62,10 +62,10 @@ describe('many', () => {
     }
   });
 
-  it('should not be possible to add zero messages', async () => {
+  it('should not be possible to publish zero messages', async () => {
     queue = new MongoDbQueue(client, 'many-3');
     try {
-      await queue.add([]);
+      await queue.publish([]);
       throw new Error('Successfully added zero messages');
     } catch (e) {
       if (e.message === 'assert.fail()') {

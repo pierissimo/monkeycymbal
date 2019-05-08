@@ -1,6 +1,6 @@
 import bluebird from 'bluebird';
-import setup from './support/setup';
-import MongoDbQueue from '../src/lib/index';
+import setup from '../test/support/setup';
+import MongoDbQueue from '../src/lib';
 
 describe('ping', () => {
   let client;
@@ -16,7 +16,7 @@ describe('ping', () => {
 
   it('checks if a retrieved message with a ping can still be acked', async () => {
     queue = new MongoDbQueue(client, 'ping-1', { visibility: 0.2 });
-    expect(await queue.add('Hello, World!')).toBeDefined();
+    expect(await queue.publish('Hello, World!')).toBeDefined();
 
     // Should get message back
     const msg = await queue.get();
@@ -36,7 +36,7 @@ describe('ping', () => {
 
   it("makes sure an acked message can't be pinged again", async () => {
     queue = new MongoDbQueue(client, 'ping-2', { visibility: 0.2 });
-    expect(await queue.add('Hello, World!')).toBeDefined();
+    expect(await queue.publish('Hello, World!')).toBeDefined();
 
     // Get it back
     const msg = await queue.get();
@@ -59,7 +59,7 @@ describe('ping', () => {
 
   it('makes sure ping options override queue options', async () => {
     queue = new MongoDbQueue(client, 'ping-3', { visibility: 0.2 });
-    expect(await queue.add('Hello, World!')).toBeDefined();
+    expect(await queue.publish('Hello, World!')).toBeDefined();
 
     // Get it back
     let msg = await queue.get();

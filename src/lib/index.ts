@@ -1,7 +1,11 @@
+/*
 import uuid = require('uuid/v4');
-import { Collection, MongoClient } from 'mongodb';
+import { Collection, MongoClient, ObjectId } from 'mongodb';
 import merge = require('lodash/merge');
+import pick = require('lodash/pick');
+import times = require('lodash/times');
 import bluebird = require('bluebird');
+import debug = require('debug');
 
 function now() {
   return new Date();
@@ -17,6 +21,8 @@ interface IOptions {
   delay?: number;
   maxRetries?: number;
   expireAfterSeconds?: number | boolean;
+  concurrency?: number;
+  pollInterval?: number;
 }
 
 interface IDynamicOptions {
@@ -30,7 +36,9 @@ const DEFAULT_OPTS = {
   visibility: 30,
   delay: 0,
   maxRetries: 5,
-  expireAfterSeconds: ONE_WEEK
+  expireAfterSeconds: ONE_WEEK,
+  concurrency: 10,
+  pollInterval: 0.05
 };
 
 // the Queue object itself
@@ -43,6 +51,11 @@ export default class MongoDbQueue {
   collection: Collection;
   deadQueueCollection: Collection;
   options: IOptions;
+
+  private pingIntervals: object = {};
+  private busyConsumers: number = 0;
+
+  private intervals: [any];
 
   constructor(mongoDb: MongoClient | string, queueName, opts?: IOptions) {
     this.queueName = queueName;
@@ -112,7 +125,7 @@ export default class MongoDbQueue {
     if (payload instanceof Array) {
       // Insert many
       if (payload.length === 0) {
-        const errMsg = 'Queue.add(): Array payload length must be greater than 0';
+        const errMsg = 'Queue.publish(): Array payload length must be greater than 0';
         throw new Error(errMsg);
       }
       const messages = payload.map(payload => {
@@ -163,7 +176,10 @@ export default class MongoDbQueue {
       }
     };
 
-    const result = await this.collection.findOneAndUpdate(query, update, { sort, returnOriginal: false });
+    const result = await this.collection.findOneAndUpdate(query, update, {
+      sort,
+      returnOriginal: false
+    });
     const msg = result.value;
 
     if (!msg) {
@@ -176,7 +192,7 @@ export default class MongoDbQueue {
       // check the tries
       if (msg.tries > this.options.maxRetries) {
         // So:
-        // 1) add this message to the deadQueue
+        // 1) publish this message to the deadQueue
         // 2) ack this message from the regular queue
         // 3) call ourself to return a new message (if exists)
         await this.deadQueueCollection.insertOne(msg);
@@ -206,7 +222,9 @@ export default class MongoDbQueue {
       }
     };
 
-    const msg = await this.collection.findOneAndUpdate(query, update, { returnOriginal: false });
+    const msg = await this.collection.findOneAndUpdate(query, update, {
+      returnOriginal: false
+    });
     if (!msg.value) {
       throw new Error(`Queue.ping(): Unidentified ack  : ${ack}`);
     }
@@ -230,7 +248,9 @@ export default class MongoDbQueue {
       }
     };
 
-    const msg = await this.collection.findOneAndUpdate(query, update, { returnOriginal: false });
+    const msg = await this.collection.findOneAndUpdate(query, update, {
+      returnOriginal: false
+    });
     if (!msg.value) {
       throw new Error(`Queue.ack(): Unidentified ack : ${ack}`);
     }
@@ -258,7 +278,9 @@ export default class MongoDbQueue {
       }
     };
 
-    const msg = await this.collection.findOneAndUpdate(query, update, { returnOriginal: false });
+    const msg = await this.collection.findOneAndUpdate(query, update, {
+      returnOriginal: false
+    });
     if (!msg.value) {
       throw new Error(`Queue.nack(): Unidentified ack : ${ack}`);
     }
@@ -319,8 +341,93 @@ export default class MongoDbQueue {
 
     return await this.collection.countDocuments(query);
   }
+
+  async subscribe(messageHandler) {
+    await this.connect();
+    return this.startConsuming(messageHandler);
+  }
+
+  async startConsuming(messageHandler) {
+    const handler = this.wrapHandler(messageHandler);
+    times(this.options.concurrency, () => {
+      const interval = setInterval(async () => {
+        if (this.busyConsumers >= this.options.concurrency) {
+          return null;
+        }
+
+        const msg = await this.get();
+        await handler(msg);
+      }, this.options.pollInterval);
+
+      this.intervals.push(interval);
+    });
+  }
+
+  wrapHandler(handler) {
+    return async (msg): Promise<any> => {
+      // this.debug(`msg._id: ${msg._id}`);
+      // this.debug(`msg.ack: ${msg.ack}`);
+      // this.debug(`msg.payload: ${msg.payload}`);
+      // this.debug(`msg.tries: ${msg.tries}`);
+      // this.debug(`busyConsumers: ${this.busyConsumers}`);
+      this.busyConsumers += 1;
+      try {
+        if (!msg.tries || msg.tries === 1) {
+          await this.markAsStarted(msg);
+        }
+        await this.startPinger(msg);
+        const result = await handler(msg);
+        // this.debug(`msg.result=${result}`);
+        await this.stopPinger(msg);
+        return this.handleSuccess(msg, result);
+      } catch (msgErr) {
+        await this.stopPinger(msg);
+        return this.handleError(msg, msgErr);
+      } finally {
+        this.busyConsumers = this.busyConsumers - 1;
+      }
+    };
+  }
+
+  markAsStarted(msg) {
+    return this.collection.findOneAndUpdate({ _id: msg._id }, { $set: { startedAt: new Date() } });
+  }
+
+  async handleSuccess(msg, result) {
+    await this.ack(msg);
+    // this.debug(`Success - msg._id: ${msg._id}`);
+    return this.collection.findOneAndUpdate({ _id: msg._id }, { $set: { result, success: true } });
+  }
+
+  handleError(msg, error) {
+    const serializedError = pick(error, Object.getOwnPropertyNames(error));
+    // this.debug(`Error - msg._id: ${msg._id}, error:`, serializedError);
+    const errorItem = {
+      date: new Date(),
+      error: serializedError
+    };
+
+    return this.collection.findOneAndUpdate({ _id: msg._id }, { $push: { errors: errorItem } });
+  }
+
+  startPinger(msg) {
+    this.pingIntervals[msg._id] = setInterval(() => {
+      try {
+        const id = this.ping(msg.ack);
+        return id;
+      } catch (err) {
+        // this.debug(`error while pinging msg with id: ${msg._id}: %O`, err);
+      }
+    }, 1000);
+  }
+
+  stopPinger(msg) {
+    const interval = this.pingIntervals[msg._id];
+    clearInterval(interval);
+  }
 }
 
 // ----------------------------------------------------------------------
 
 module.exports = MongoDbQueue;
+*/

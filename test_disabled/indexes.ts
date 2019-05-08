@@ -1,5 +1,5 @@
-import setup from './support/setup';
-import MongoDbQueue from '../src/lib/index';
+import setup from '../test/support/setup';
+import MongoDbQueue from '../src/lib';
 
 describe('indexes', () => {
   let client;

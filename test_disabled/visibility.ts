@@ -1,6 +1,6 @@
 import bluebird from 'bluebird';
-import setup from './support/setup';
-import MongoDbQueue from '../src/lib/index';
+import setup from '../test/support/setup';
+import MongoDbQueue from '../src/lib';
 
 describe('visibility', () => {
   let client;
@@ -16,7 +16,7 @@ describe('visibility', () => {
   });
 
   it('checks is message is back in queue after visibility runs out', async () => {
-    expect(await queue.add('Hello, World!')).toBeDefined();
+    expect(await queue.publish('Hello, World!')).toBeDefined();
     expect(await queue.get()).toBeDefined();
 
     // wait a bit so the message goes back into the queue
@@ -33,7 +33,7 @@ describe('visibility', () => {
   });
 
   it("checks that a late ack doesn't remove the msg", async () => {
-    expect(await queue.add('Hello, World!')).toBeDefined();
+    expect(await queue.publish('Hello, World!')).toBeDefined();
     let msg = await queue.get();
     const oldAck = msg.ack;
     expect(msg.ack).toBeDefined();
@@ -60,7 +60,7 @@ describe('visibility', () => {
   });
 
   it('checks if message visibility overrides queue visibility', async () => {
-    expect(await queue.add('Hello, World!')).toBeDefined();
+    expect(await queue.publish('Hello, World!')).toBeDefined();
     let msg = await queue.get({ visibility: 0.3 });
     expect(msg._id).toBeDefined();
 
