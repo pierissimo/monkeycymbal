@@ -1,6 +1,7 @@
 import should from 'should';
 import times = require('lodash/times');
 import Sinon = require('sinon');
+import bluebird = require('bluebird');
 import setup from '../support/setup';
 import Channel from '../../src/lib/Channel';
 // import Queue from '../../src/lib/Queue';
@@ -18,7 +19,7 @@ describe('subscribe', () => {
   });
 
   afterEach(async () => {
-    queue.stop();
+    await queue.stop();
     await client.close();
     sinon.restore();
   });
@@ -41,15 +42,15 @@ describe('subscribe', () => {
           return 'myResult';
         },
         'default',
-        { concurrency: 10, pollInterval: 0.5 }
+        { concurrency: 10, pollInterval: 1 }
       );
       sinon.spy(queue, 'getMany');
 
-      times(50, () => channel.publish('Hello, World!'));
+      await bluebird.map(times(50), () => channel.publish('Hello, World!'));
     })();
   });
 
-  it('with a concurrency of 100, it should process 100 messages in 1 batches', function(done) {
+  it('with a concurrency of 10, it should process 10 messages in 1 batches', function(done) {
     this.timeout(10000);
 
     (async () => {
@@ -58,7 +59,7 @@ describe('subscribe', () => {
         () => {
           process.nextTick(async () => {
             processed += 1;
-            if (processed === 100) {
+            if (processed === 10) {
               should(queue.getMany.callCount).be.equal(1);
               done();
             }
@@ -67,11 +68,12 @@ describe('subscribe', () => {
           return 'myResult';
         },
         'default',
-        { concurrency: 100, pollInterval: 1 }
+        { concurrency: 10, pollInterval: 1 }
       );
+
       sinon.spy(queue, 'getMany');
 
-      times(100, () => channel.publish('Hello, World!'));
+      await bluebird.map(times(10), () => channel.publish('Hello, World!'));
     })();
   });
 });

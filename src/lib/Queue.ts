@@ -4,8 +4,10 @@ import times = require('lodash/times');
 import merge = require('lodash/merge');
 import bluebird = require('bluebird');
 import { MongoClient, Collection } from 'mongodb';
+import { EventEmitter } from 'eventemitter3';
 import Debug = require('debug');
 const debug = Debug('mongodb-promise-queue:queue');
+
 // const debug = console.log;
 
 const DEFAULT_OPTS = {
@@ -31,9 +33,15 @@ function nowPlusSecs(secs) {
   return new Date(Date.now() + secs * 1000);
 }
 
-export default class Queue {
+enum MessageEvent {
+  wait = 'wait',
+  active = 'active',
+  completed = 'completed',
+  failed = 'failed'
+}
+
+export default class Queue extends EventEmitter {
   private status: 'idle' | 'started' | 'stopped';
-  private pingIntervals: object = {};
   private busyConsumers: number = 0;
   private intervalHandles: any[] = [];
   private handler: Function;
@@ -47,6 +55,7 @@ export default class Queue {
     private queueName: string,
     opts: ISubscriptionOptions = {}
   ) {
+    super();
     this.options = merge({}, DEFAULT_OPTS, opts);
     this.collectionName = `${this.topic}_${this.queueName}`;
     this.collection = this.client.db().collection(this.collectionName);
@@ -62,7 +71,12 @@ export default class Queue {
     this.status = 'started';
     await this.initialize();
     this.handler = this.wrapHandler(messageHandler);
+    this.setupPolling();
 
+    return this;
+  }
+
+  public setupPolling() {
     const interval = setInterval(async () => {
       if (this.status !== 'started') return;
 
@@ -76,33 +90,12 @@ export default class Queue {
 
       const messages = await this.getMany(idleConsumers);
       if (!messages.length) return null;
-      // this.busyConsumers += messages.length;
+      debug(`subscribe: got ${messages.length}`);
+      this.busyConsumers += messages.length;
       await bluebird.map(messages, msg => this.handler(msg));
     }, this.options.pollInterval * 1000);
 
     this.intervalHandles.push(interval);
-
-    return this;
-  }
-
-  public async subscribeOld(messageHandler) {
-    await this.initialize();
-    this.handler = this.wrapHandler(messageHandler);
-    times(this.options.concurrency, () => {
-      const interval = setInterval(async () => {
-        if (this.busyConsumers >= this.options.concurrency) {
-          return null;
-        }
-
-        const msg = await this.get();
-        if (!msg) return null;
-        await this.handler(msg);
-      }, this.options.pollInterval);
-
-      this.intervalHandles.push(interval);
-    });
-
-    return this;
   }
 
   public subscribeWithChangeStream() {
@@ -115,6 +108,13 @@ export default class Queue {
     changeStream.on('change', (next, ...rest) => {
       debug(next, rest);
     });
+  }
+
+  public start() {
+    this.setupPolling();
+    this.status = 'started';
+
+    return this;
   }
 
   public stop() {
@@ -132,7 +132,7 @@ export default class Queue {
       // this.debug(`msg.payload: ${msg.payload}`);
       // this.debug(`msg.tries: ${msg.tries}`);
       // this.debug(`busyConsumers: ${this.busyConsumers}`);
-      this.busyConsumers += 1;
+      // this.busyConsumers += 1;
       try {
         if (!msg.tries || msg.tries === 1) {
           await this.markAsStarted(msg);
@@ -157,12 +157,15 @@ export default class Queue {
 
   async handleSuccess(msg, result) {
     // this.debug(`Success - msg._id: ${msg._id}`);
-    return this.ack(msg.ack, result);
+    const ackResult = await this.ack(msg.ack, result);
+    this.emit(MessageEvent.completed, ackResult);
+
+    return ackResult;
 
     // return this.collection.findOneAndUpdate({ _id: msg._id }, { $set: { result, success: true } });
   }
 
-  handleError(msg, error) {
+  async handleError(msg, error) {
     const serializedError = pick(error, Object.getOwnPropertyNames(error));
     // this.debug(`Error - msg._id: ${msg._id}, error:`, serializedError);
     const errorItem = {
@@ -170,59 +173,56 @@ export default class Queue {
       error: serializedError
     };
 
-    return this.collection.findOneAndUpdate({ _id: msg._id }, { $push: { errors: errorItem } });
-  }
+    const { value: errorResult } = await this.collection.findOneAndUpdate(
+      { _id: msg._id },
+      { $push: { errors: errorItem } },
+      { returnOriginal: false }
+    );
 
-  startPinger(msg) {
-    this.pingIntervals[msg._id] = setInterval(() => {
-      try {
-        const id = this.ping(msg.ack);
-        return id;
-      } catch (err) {
-        // this.debug(`error while pinging msg with id: ${msg._id}: %O`, err);
-        throw err;
-      }
-    }, 1000);
-  }
+    this.emit(MessageEvent.failed, errorResult);
 
-  stopPinger(msg) {
-    const interval = this.pingIntervals[msg._id];
-    clearInterval(interval);
+    return errorResult;
   }
 
   async getMany(count, opts: ISubscriptionOptions = {}) {
+    debug(`getMany: count ${count}, options: ${JSON.stringify(opts || {})}`);
     const visibility = opts.visibility || this.options.visibility;
 
-    const query = {
-      deletedAt: null,
-      visible: { $lte: now() }
-    };
+    const messages = await bluebird.map(
+      times(count),
+      async () => {
+        const query = {
+          deletedAt: null,
+          visible: { $lte: now() }
+        };
 
-    const sort = {
-      _id: 1
-    };
+        const sort = {
+          priority: -1,
+          createdAt: 1
+        };
+        const update = {
+          $inc: { tries: 1 },
+          $set: {
+            ack: uuid(),
+            visible: nowPlusSecs(visibility)
+          }
+        };
+        const result = await this.collection.findOneAndUpdate(query, update, {
+          sort,
+          returnOriginal: false
+        });
 
-    const messages = await bluebird.map(times(count), async () => {
-      const update = {
-        $inc: { tries: 1 },
-        $set: {
-          ack: uuid(),
-          visible: nowPlusSecs(visibility)
+        const msg = result.value;
+
+        if (!msg) {
+          // @ts-ignore
+          return;
         }
-      };
-      const result = await this.collection.findOneAndUpdate(query, update, {
-        sort,
-        returnOriginal: false
-      });
-      const msg = result.value;
 
-      if (!msg) {
-        // @ts-ignore
-        return;
-      }
-
-      return msg;
-    });
+        return msg;
+      },
+      { concurrency: 1 }
+    );
 
     return messages.filter(m => m);
 
@@ -250,7 +250,7 @@ export default class Queue {
     };
 
     const sort = {
-      _id: 1
+      createdAt: 1
     };
 
     const update = {
@@ -341,7 +341,7 @@ export default class Queue {
       throw new Error(`Queue.ack(): Unidentified ack : ${ack}`);
     }
 
-    return `${msg.value._id}`;
+    return msg.value;
   }
   // ----------------------------------------------------------------------
 
@@ -371,7 +371,7 @@ export default class Queue {
       throw new Error(`Queue.nack(): Unidentified ack : ${ack}`);
     }
 
-    return `${msg.value._id}`;
+    return msg.value;
   }
 
   // ----------------------------------------------------------------------
@@ -432,6 +432,8 @@ export default class Queue {
     /*await this.connect();*/
     const indexPromises = [
       this.collection.createIndex({ deletedAt: 1, visible: 1 }, { background: true }),
+      this.collection.createIndex({ deletedAt: 1, visible: 1, createdAt: 1 }, { background: true }),
+      this.collection.createIndex({ deletedAt: 1, visible: 1, priority: -1, createdAt: 1 }, { background: true }),
       this.collection.createIndex({ ack: 1 }, { unique: true, sparse: true, background: true })
     ];
     if (this.options.expireAfterSeconds && typeof this.options.expireAfterSeconds === 'number') {
@@ -444,5 +446,9 @@ export default class Queue {
     }
 
     return bluebird.all(indexPromises);
+  }
+
+  public emit(event: MessageEvent, ...args: any[]): boolean {
+    return super.emit(event, ...args);
   }
 }

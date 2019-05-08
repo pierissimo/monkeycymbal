@@ -5,7 +5,7 @@ import Channel from '../../src/lib/Channel';
 
 describe('default', () => {
   let client;
-  // let queue;
+  let queue;
   let channel;
 
   beforeEach(async () => {
@@ -14,25 +14,26 @@ describe('default', () => {
   });
 
   afterEach(async () => {
+    await queue.stop();
     await client.close();
   });
 
   it('checks default functionality', done => {
     (async () => {
-      const queue = await channel.subscribe(msg => {
+      queue = await channel.subscribe(msg => {
         should(typeof msg._id.toString()).be.equal('string');
         should(typeof msg.ack).be.equal('string');
         should(typeof msg.tries).be.equal('number');
         should(msg.tries).be.equal(1);
         should(msg.payload).be.equal('Hello, World!');
 
-        process.nextTick(async () => {
+        setTimeout(async () => {
           const msg = await queue.collection.findOne();
           should(msg.deletedAt).be.instanceOf(Date);
           should(msg.result).be.equal('myResult');
           queue.stop();
           done();
-        });
+        }, 500);
 
         return 'myResult';
       });

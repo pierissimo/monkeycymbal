@@ -12,6 +12,10 @@ interface IQueueOptions {
   delay?: number;
 }
 
+interface IPublishOptions extends IQueueOptions {
+  priority?: number;
+}
+
 const DEFAULT_OPTS = {
   delay: 0
 };
@@ -73,7 +77,7 @@ export default class Channel {
 
   // ----------------------------------------------------------------------
 
-  public async publish(payload, opts: IQueueOptions = {}) {
+  public async publish(payload, opts: IPublishOptions = {}) {
     debug('publish %j with options %j', payload, opts);
     await this.connect();
     const allQueues = await this.client
@@ -86,39 +90,35 @@ export default class Channel {
     debug('found queues %j', queues);
 
     const delay = opts.delay || this.options.delay;
+    const priority = opts.priority || 1;
+
+    const createdAt = new Date();
     const visible = delay ? nowPlusSecs(delay) : now();
 
-    return bluebird.map(queues, async collectionName => {
+    const result = await bluebird.map(queues, async collectionName => {
       const collection = this.client.db().collection(collectionName);
 
-      if (payload instanceof Array) {
-        // Insert many
-        if (payload.length === 0) {
-          const errMsg = 'Queue.publish(): Array payload length must be greater than 0';
-          throw new Error(errMsg);
-        }
-        const messages = payload.map(payload => ({
-          visible,
-          payload
-        }));
-        const result = await collection.insertMany(messages);
-
-        // These need to be converted because they're in a weird format.
-        const insertedIds = [];
-        for (const key of Object.keys(result.insertedIds)) {
-          const numericKey = +key;
-          insertedIds[numericKey] = `${result.insertedIds[key]}`;
-        }
-
-        return insertedIds;
+      const payloadArray = payload instanceof Array ? payload : [payload];
+      // Insert many
+      if (payloadArray.length === 0) {
+        const errMsg = 'Queue.publish(): Array payload length must be greater than 0';
+        throw new Error(errMsg);
       }
-      // insert one
-      const result = await collection.insertOne({
+      const messages = payloadArray.map(payload => ({
         visible,
+        createdAt,
+        priority,
         payload
-      });
-      return result.insertedId;
+      }));
+      const result = await collection.insertMany(messages);
+
+      // These need to be converted because they're in a weird format.
+      return result.insertedIds;
     });
+
+    if (result.length !== 1) return result;
+
+    return result[0];
   }
 
   subscribe(messageHandler, queueName = 'default', opts: ISubscriptionOptions): Promise<Queue> {
