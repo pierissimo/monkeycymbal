@@ -24,7 +24,7 @@ jobs:
       - checkout
       - restore_cache:
           keys:
-            - v2-npm-deps-{{ .Branch }}-{{ checksum "package.json" }}-{{ checksum "package-lock.json" }}
+            - v2-npm-deps-{{ .Branch }}-{{ checksum "package.json" }}-{{ checksum "yarn.lock" }}
             - v2-npm-deps-{{ .Branch }}-{{ checksum "package.json" }}
             - v2-npm-deps-{{ .Branch }}
             - v2-npm-deps-
@@ -34,7 +34,7 @@ jobs:
             echo -e "//registry.npmjs.org/:_authToken=$NPM_TOKEN\nscope=@oneflow" > .npmrc
             npm install
       - save_cache:
-          key: v2-npm-deps-{{ .Branch }}-{{ checksum "package.json" }}-{{ checksum "package-lock.json" }}
+          key: v2-npm-deps-{{ .Branch }}-{{ checksum "package.json" }}-{{ checksum "yarn.lock" }}
           paths:
             - node_modules
       - run:
