@@ -32,11 +32,11 @@ describe('subscribe', () => {
       queue.on('completed', () => {
         processed += 1;
         if (processed === 50) {
-          should(queue.getMany.callCount).be.equal(5);
+          should(queue.get.callCount).be.equal(5);
           done();
         }
       });
-      sinon.spy(queue, 'getMany');
+      sinon.spy(queue, 'get');
 
       await bluebird.map(times(50), () => queue.add('Hello, World!'));
     })();
@@ -52,11 +52,11 @@ describe('subscribe', () => {
       queue.on('completed', () => {
         processed += 1;
         if (processed === 10) {
-          should(queue.getMany.callCount).be.equal(1);
+          should(queue.get.callCount).be.equal(1);
           done();
         }
       });
-      sinon.spy(queue, 'getMany');
+      sinon.spy(queue, 'get');
 
       await bluebird.map(times(10), () => queue.add('Hello, World!'));
     })();
@@ -77,7 +77,7 @@ describe('subscribe', () => {
         }
         if (processed === 10) done();
       });
-      sinon.spy(queue, 'getMany');
+      sinon.spy(queue, 'get');
 
       await bluebird.map(times(10), index => {
         const priority = index <= 2 ? 3 : 1;

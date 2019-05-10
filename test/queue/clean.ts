@@ -35,7 +35,7 @@ describe('clean', () => {
     should(await queue.size()).be.equal(1);
     should(await queue.total()).be.equal(1);
 
-    const msg = await queue.get();
+    const msg = (await queue.get())[0];
     should(msg._id).be.ok();
     should(msg.payload).be.equal('Hello, World!');
     should(await queue.size()).be.equal(0);

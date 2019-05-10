@@ -17,7 +17,8 @@ const debug = Debug('mongodb-promise-queue:queue');
 const DEFAULT_OPTS = {
   visibility: 30,
   concurrency: 1,
-  pollInterval: 0.05
+  pollInterval: 0.05,
+  maxRetries: 5
 };
 
 export interface ISubscriptionOptions {
@@ -27,23 +28,27 @@ export interface ISubscriptionOptions {
   expireAfterSeconds?: number | boolean;
   concurrency?: number;
   pollInterval?: number;
+  deadQueue?: string | Queue;
 }
 
 enum MessageEvent {
-  wait = 'wait',
+  added = 'added',
   active = 'active',
   completed = 'completed',
-  failed = 'failed'
+  failed = 'failed',
+  dead = 'dead'
 }
 
 export default class Queue extends EventEmitter {
+  private initialized = false;
   private status: 'idle' | 'started' | 'stopped';
   private busyConsumers: number = 0;
   private intervalHandles: any[] = [];
   private handler: Function;
-  private collection: Collection;
+  public collection: Collection;
   private options: ISubscriptionOptions;
   private collectionName: string;
+  public deadQueue?: Queue;
 
   constructor(private client: MongoClient, private queueName: string, opts: ISubscriptionOptions = {}) {
     super();
@@ -54,12 +59,24 @@ export default class Queue extends EventEmitter {
   }
 
   public async initialize() {
+    if (this.initialized) return;
     await this.client.db().createCollection(this.collectionName);
+    if (this.options.deadQueue) {
+      if (typeof this.options.deadQueue === 'string') {
+        this.deadQueue = new Queue(this.client, this.options.deadQueue);
+      } else if (this.options.deadQueue instanceof Queue) {
+        this.deadQueue = this.options.deadQueue;
+      } else {
+        throw new Error('Invalid deadQueue configuration');
+      }
+    }
     await this.createIndexes();
+    this.initialized = true;
   }
 
   public async add(payload, opts: IAddMessageOptions = {}) {
     assert.ok(this.client, '');
+    await this.initialize();
     const delay = opts.delay || this.options.delay;
     const priority = opts.priority || 1;
 
@@ -85,10 +102,14 @@ export default class Queue extends EventEmitter {
     const insertedIds = [];
     for (const key of Object.keys(result.insertedIds)) {
       const numericKey = +key;
-      insertedIds[numericKey] = `${result.insertedIds[key]}`;
+      insertedIds[numericKey] = result.insertedIds[key];
     }
 
     return insertedIds;
+  }
+
+  public async createRecord(data) {
+    return this.collection.insertOne(data);
   }
 
   public async subscribe(messageHandler) {
@@ -101,10 +122,10 @@ export default class Queue extends EventEmitter {
     return this;
   }
 
-  public subscribeWithChangeStream() {
+  /*public subscribeWithChangeStream() {
     const pipeline = [
-      /*{ $match: { 'fullDocument.username': 'alice' } },
-      { $addFields: { newField: 'this is an added field!' } }*/
+      /!*{ $match: { 'fullDocument.username': 'alice' } },
+      { $addFields: { newField: 'this is an added field!' } }*!/
     ];
 
     const changeStream = this.collection.watch(pipeline);
@@ -112,7 +133,7 @@ export default class Queue extends EventEmitter {
       debug(next, rest);
     });
   }
-
+*/
   public start() {
     this.setupPolling();
     this.status = 'started';
@@ -211,7 +232,9 @@ export default class Queue extends EventEmitter {
 
   public async get(count: number = 1, opts: ISubscriptionOptions = {}): Promise<IMessage[]> {
     debug(`get: count ${count}, options: ${JSON.stringify(opts || {})}`);
+    await this.initialize();
     const visibility = opts.visibility || this.options.visibility;
+    const maxRetries = opts.maxRetries || this.options.maxRetries;
 
     const now = DateHelper.now();
 
@@ -246,32 +269,33 @@ export default class Queue extends EventEmitter {
           return;
         }
 
+        // if we have a deadQueue, then check the tries, else don't
+        if (this.deadQueue) {
+          // check the tries
+          if (msg.tries > maxRetries) {
+            // So:
+            // 1) publish this message to the deadQueue
+            // 2) ack this message from the regular queue
+            // 3) call ourself to return a new message (if exists)
+            await this.deadQueue.createRecord(msg);
+            await this.ack(msg.ack);
+            return (await this.get(1, opts))[0];
+          }
+        }
+
         return msg;
       },
       { concurrency: 1 }
     );
 
     return messages.filter(m => m);
-
-    // if we have a deadQueue, then check the tries, else don't
-    /*if (this.options.deadQueueName) {
-      // check the tries
-      if (msg.tries > this.options.maxRetries) {
-        // So:
-        // 1) publish this message to the deadQueue
-        // 2) ack this message from the regular queue
-        // 3) call ourself to return a new message (if exists)
-        await this.deadQueueCollection.insertOne(msg);
-        await this.ack(msg.ack);
-        return await this.get(opts);
-      }
-    }*/
   }
 
   // ----------------------------------------------------------------------
 
   async ping(ack, opts: ISubscriptionOptions = {}) {
-    /*await this.connect();*/
+    await this.initialize();
+
     const visibility = opts.visibility || this.options.visibility;
 
     const query = {
@@ -299,7 +323,8 @@ export default class Queue extends EventEmitter {
   // ----------------------------------------------------------------------
 
   async ack(ack, result?: any) {
-    /*await this.connect();*/
+    await this.initialize();
+
     const query = {
       ack,
       visible: { $gt: DateHelper.now() },
@@ -325,7 +350,8 @@ export default class Queue extends EventEmitter {
   // ----------------------------------------------------------------------
 
   async nack(ack, opts: ISubscriptionOptions = {}) {
-    /*await this.connect();*/
+    await this.initialize();
+
     const delay = opts.delay || this.options.delay;
 
     const query = {
@@ -356,7 +382,8 @@ export default class Queue extends EventEmitter {
   // ----------------------------------------------------------------------
 
   async clean() {
-    /*await this.connect();*/
+    await this.initialize();
+
     const query = {
       deletedAt: { $exists: true }
     };
@@ -367,14 +394,16 @@ export default class Queue extends EventEmitter {
   // ----------------------------------------------------------------------
 
   async total() {
-    /*await this.connect();*/
+    await this.initialize();
+
     return await this.collection.countDocuments();
   }
 
   // ----------------------------------------------------------------------
 
   async size() {
-    /*await this.connect();*/
+    await this.initialize();
+
     const query = {
       deletedAt: null,
       visible: { $lte: DateHelper.now() }
@@ -386,7 +415,8 @@ export default class Queue extends EventEmitter {
   // ----------------------------------------------------------------------
 
   async inFlight() {
-    /*await this.connect();*/
+    await this.initialize();
+
     const query = {
       ack: { $exists: true },
       visible: { $gt: DateHelper.now() },
@@ -399,7 +429,8 @@ export default class Queue extends EventEmitter {
   // ----------------------------------------------------------------------
 
   async done() {
-    /*await this.connect();*/
+    await this.initialize();
+
     const query = {
       deletedAt: { $exists: true }
     };
@@ -408,7 +439,6 @@ export default class Queue extends EventEmitter {
   }
 
   async createIndexes() {
-    /*await this.connect();*/
     const indexPromises = [
       this.collection.createIndex({ deletedAt: 1, visible: 1 }, { background: true }),
       this.collection.createIndex({ deletedAt: 1, visible: 1, createdAt: 1 }, { background: true }),

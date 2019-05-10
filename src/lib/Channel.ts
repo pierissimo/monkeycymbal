@@ -99,7 +99,7 @@ export default class Channel {
       const insertedIds = [];
       for (const key of Object.keys(result.insertedIds)) {
         const numericKey = +key;
-        insertedIds[numericKey] = `${result.insertedIds[key]}`;
+        insertedIds[numericKey] = result.insertedIds[key];
       }
 
       return insertedIds;

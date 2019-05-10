@@ -77,7 +77,7 @@ describe('ping', () => {
     await bluebird.delay(150);
 
     // Should be available now
-    msg = await queue.get();
+    msg = (await queue.get())[0];
     should(msg).be.ok();
 
     // And done.
