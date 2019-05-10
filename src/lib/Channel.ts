@@ -79,7 +79,8 @@ export default class Channel {
     const createdAt = new Date();
     const visible = delay ? DateHelper.nowPlusSecs(delay) : DateHelper.now();
 
-    const result = await bluebird.map(queues, async collectionName => {
+    const allInsertedIds = [];
+    await bluebird.map(queues, async collectionName => {
       const collection = this.client.db().collection(collectionName);
 
       const payloadArray = payload instanceof Array ? payload : [payload];
@@ -96,18 +97,16 @@ export default class Channel {
       }));
       const result = await collection.insertMany(messages);
 
-      const insertedIds = [];
-      for (const key of Object.keys(result.insertedIds)) {
+      const ids = Object.keys(result.insertedIds).reduce((acc, key) => {
         const numericKey = +key;
-        insertedIds[numericKey] = result.insertedIds[key];
-      }
+        acc[numericKey] = result.insertedIds[key];
+        return acc;
+      }, []);
 
-      return insertedIds;
+      allInsertedIds.push(...ids);
     });
 
-    if (result.length !== 1) return result;
-
-    return result[0];
+    return allInsertedIds;
   }
 
   subscribe(messageHandler, queueName = 'default', opts: ISubscriptionOptions): Promise<Queue> {

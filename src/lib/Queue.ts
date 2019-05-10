@@ -35,12 +35,14 @@ enum MessageEvent {
   added = 'added',
   active = 'active',
   completed = 'completed',
-  failed = 'failed',
+  error = 'error',
   dead = 'dead'
 }
 
 export default class Queue extends EventEmitter {
-  private initialized = false;
+  private initializePromise: Promise<void>;
+  private connectionUrl?: string;
+  client: MongoClient;
   private status: 'idle' | 'started' | 'stopped';
   private busyConsumers: number = 0;
   private intervalHandles: any[] = [];
@@ -50,28 +52,42 @@ export default class Queue extends EventEmitter {
   private collectionName: string;
   public deadQueue?: Queue;
 
-  constructor(private client: MongoClient, private queueName: string, opts: ISubscriptionOptions = {}) {
+  constructor(mongoDb: MongoClient | string, private queueName: string, opts: ISubscriptionOptions = {}) {
     super();
     assert.ok(queueName, 'QueueName is required');
     this.options = merge({}, DEFAULT_OPTS, opts);
     this.collectionName = this.queueName;
-    this.collection = this.client.db().collection(this.collectionName);
+
+    if (typeof mongoDb === 'string') {
+      this.connectionUrl = mongoDb;
+    } else {
+      this.client = mongoDb;
+    }
   }
 
   public async initialize() {
-    if (this.initialized) return;
-    await this.client.db().createCollection(this.collectionName);
-    if (this.options.deadQueue) {
-      if (typeof this.options.deadQueue === 'string') {
-        this.deadQueue = new Queue(this.client, this.options.deadQueue);
-      } else if (this.options.deadQueue instanceof Queue) {
-        this.deadQueue = this.options.deadQueue;
-      } else {
-        throw new Error('Invalid deadQueue configuration');
+    if (typeof this.initializePromise !== 'undefined') return this.initializePromise;
+    this.initializePromise = new Promise(async resolve => {
+      if (!this.client) {
+        this.client = await MongoClient.connect(this.connectionUrl);
       }
-    }
-    await this.createIndexes();
-    this.initialized = true;
+
+      this.collection = this.client.db().collection(this.collectionName);
+      await this.client.db().createCollection(this.collectionName);
+      if (this.options.deadQueue) {
+        if (typeof this.options.deadQueue === 'string') {
+          this.deadQueue = new Queue(this.client, this.options.deadQueue);
+        } else if (this.options.deadQueue instanceof Queue) {
+          this.deadQueue = this.options.deadQueue;
+        } else {
+          throw new Error('Invalid deadQueue configuration');
+        }
+      }
+      await this.createIndexes();
+      resolve();
+    });
+
+    return this.initializePromise;
   }
 
   public async add(payload, opts: IAddMessageOptions = {}) {
@@ -99,16 +115,16 @@ export default class Queue extends EventEmitter {
     const result = await collection.insertMany(messages);
 
     // These need to be converted because they're in a weird format.
-    const insertedIds = [];
-    for (const key of Object.keys(result.insertedIds)) {
+    return Object.keys(result.insertedIds).reduce((acc, key) => {
       const numericKey = +key;
-      insertedIds[numericKey] = result.insertedIds[key];
-    }
-
-    return insertedIds;
+      acc[numericKey] = result.insertedIds[key];
+      this.emit(MessageEvent.added, acc[numericKey]);
+      return acc;
+    }, []);
   }
 
   public async createRecord(data) {
+    await this.initialize();
     return this.collection.insertOne(data);
   }
 
@@ -179,12 +195,13 @@ export default class Queue extends EventEmitter {
       // this.debug(`msg.tries: ${msg.tries}`);
       // this.debug(`busyConsumers: ${this.busyConsumers}`);
       // this.busyConsumers += 1;
+      this.emit(MessageEvent.active, msg);
       try {
         if (!msg.tries || msg.tries === 1) {
           await this.markAsStarted(msg);
         }
         // await this.startPinger(msg);
-        const result = await handler(msg);
+        const result = await bluebird.try(() => handler(msg)).timeout(this.options.visibility * 1000);
         // this.debug(`msg.result=${result}`);
         // await this.stopPinger(msg);
         return this.handleSuccess(msg, result);
@@ -207,8 +224,6 @@ export default class Queue extends EventEmitter {
     this.emit(MessageEvent.completed, ackResult);
 
     return ackResult;
-
-    // return this.collection.findOneAndUpdate({ _id: msg._id }, { $set: { result, success: true } });
   }
 
   private async handleError(msg, error) {
@@ -225,7 +240,7 @@ export default class Queue extends EventEmitter {
       { returnOriginal: false }
     );
 
-    this.emit(MessageEvent.failed, errorResult);
+    this.emit(MessageEvent.error, errorResult);
 
     return errorResult;
   }
@@ -270,17 +285,18 @@ export default class Queue extends EventEmitter {
         }
 
         // if we have a deadQueue, then check the tries, else don't
-        if (this.deadQueue) {
-          // check the tries
-          if (msg.tries > maxRetries) {
-            // So:
-            // 1) publish this message to the deadQueue
-            // 2) ack this message from the regular queue
-            // 3) call ourself to return a new message (if exists)
+        if (msg.tries > maxRetries) {
+          // So:
+          // 1) publish this message to the deadQueue
+          // 2) ack this message from the regular queue
+          // 3) call ourself to return a new message (if exists)
+          await this.ack(msg.ack);
+          if (this.deadQueue) {
+            // check the tries
             await this.deadQueue.createRecord(msg);
-            await this.ack(msg.ack);
-            return (await this.get(1, opts))[0];
           }
+          this.emit(MessageEvent.dead, msg);
+          return (await this.get(1, opts))[0];
         }
 
         return msg;
@@ -441,8 +457,8 @@ export default class Queue extends EventEmitter {
   async createIndexes() {
     const indexPromises = [
       this.collection.createIndex({ deletedAt: 1, visible: 1 }, { background: true }),
-      this.collection.createIndex({ deletedAt: 1, visible: 1, createdAt: 1 }, { background: true }),
-      this.collection.createIndex({ deletedAt: 1, visible: 1, priority: -1, createdAt: 1 }, { background: true }),
+      this.collection.createIndex({ deletedAt: 1, createdAt: 1, visible: 1 }, { background: true }),
+      this.collection.createIndex({ deletedAt: 1, priority: -1, createdAt: 1, visible: 1 }, { background: true }),
       this.collection.createIndex({ ack: 1 }, { unique: true, sparse: true, background: true })
     ];
     if (this.options.expireAfterSeconds && typeof this.options.expireAfterSeconds === 'number') {

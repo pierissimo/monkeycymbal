@@ -43,19 +43,27 @@ describe('Channel', () => {
   });
 
   describe('#publish', () => {
-    it('should put a message in the queue', async () => {
+    it('should put a message in 2 queues that listen to the topic', async () => {
       await client.db().createCollection('myTopic_myQueue');
+      await client.db().createCollection('myTopic_myOtherQueue');
       const channel = new Channel(client, 'myTopic');
-      const msg = { test: 1 };
+      const msg = 'message1';
       const response = await channel.publish(msg);
-      const item = await client
+      const item1 = await client
         .db()
         .collection('myTopic_myQueue')
         .findOne();
 
+      const item2 = await client
+        .db()
+        .collection('myTopic_myOtherQueue')
+        .findOne();
+
       should(response[0]).be.instanceOf(ObjectId);
-      should(item._id.toString()).be.equal(response[0].toString());
-      should(item.payload).be.deepEqual(msg);
+      should(item1._id.toString()).be.equal(response[0].toString());
+      should(item1.payload).be.equal(msg);
+      should(item2._id.toString()).be.equal(response[1].toString());
+      should(item2.payload).be.equal(msg);
     });
   });
 });
