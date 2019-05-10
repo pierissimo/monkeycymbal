@@ -3,7 +3,7 @@ import times = require('lodash/times');
 import Sinon = require('sinon');
 import bluebird = require('bluebird');
 import setup from '../support/setup';
-import Channel from '../../src/lib/Channel';
+import Queue from '../../src/lib/Queue';
 // import Queue from '../../src/lib/Queue';
 
 const sinon = Sinon.createSandbox();
@@ -11,11 +11,9 @@ const sinon = Sinon.createSandbox();
 describe('subscribe', () => {
   let client;
   let queue;
-  let channel;
 
   beforeEach(async () => {
     ({ client } = await setup());
-    channel = new Channel(client, 'myTopic');
   });
 
   afterEach(async () => {
@@ -29,7 +27,8 @@ describe('subscribe', () => {
 
     (async () => {
       let processed = 0;
-      queue = await channel.subscribe(() => 'myResult', 'default', { concurrency: 10, pollInterval: 1 });
+      queue = new Queue(client, 'default', { concurrency: 10, pollInterval: 1 });
+      await queue.subscribe(() => 'myResult');
       queue.on('completed', () => {
         processed += 1;
         if (processed === 50) {
@@ -39,7 +38,7 @@ describe('subscribe', () => {
       });
       sinon.spy(queue, 'getMany');
 
-      await bluebird.map(times(50), () => channel.publish('Hello, World!'));
+      await bluebird.map(times(50), () => queue.add('Hello, World!'));
     })();
   });
 
@@ -48,7 +47,8 @@ describe('subscribe', () => {
 
     (async () => {
       let processed = 0;
-      queue = await channel.subscribe(() => 'myResult', 'default', { concurrency: 10, pollInterval: 1 });
+      queue = new Queue(client, 'default', { concurrency: 10, pollInterval: 1 });
+      queue = await queue.subscribe(() => 'myResult');
       queue.on('completed', () => {
         processed += 1;
         if (processed === 10) {
@@ -58,14 +58,15 @@ describe('subscribe', () => {
       });
       sinon.spy(queue, 'getMany');
 
-      await bluebird.map(times(10), () => channel.publish('Hello, World!'));
+      await bluebird.map(times(10), () => queue.add('Hello, World!'));
     })();
   });
 
   it('should process first messages with higher priority', done => {
     (async () => {
       let processed = 0;
-      queue = await channel.subscribe(() => 'myResult', 'default', { concurrency: 1, pollInterval: 0.05 });
+      queue = new Queue(client, 'default', { concurrency: 1, pollInterval: 0.05 });
+      await queue.subscribe(() => 'myResult', 'default');
 
       queue.on('completed', msg => {
         processed += 1;
@@ -76,15 +77,12 @@ describe('subscribe', () => {
         }
         if (processed === 10) done();
       });
-      await queue.stop();
       sinon.spy(queue, 'getMany');
 
       await bluebird.map(times(10), index => {
         const priority = index <= 2 ? 3 : 1;
-        return channel.publish('Hello, World!', { priority });
+        return queue.add('Hello, World!', { priority });
       });
-
-      await queue.start();
     })();
   });
 });

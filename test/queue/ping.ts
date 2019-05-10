@@ -1,6 +1,7 @@
+import should from 'should';
 import bluebird from 'bluebird';
-import setup from '../test/support/setup';
-import MongoDbQueue from '../src/lib';
+import setup from '../support/setup';
+import Queue from '../../src/lib/Queue';
 
 describe('ping', () => {
   let client;
@@ -15,35 +16,35 @@ describe('ping', () => {
   });
 
   it('checks if a retrieved message with a ping can still be acked', async () => {
-    queue = new MongoDbQueue(client, 'ping-1', { visibility: 0.2 });
-    expect(await queue.publish('Hello, World!')).toBeDefined();
+    queue = new Queue(client, 'ping-1', { visibility: 0.2 });
+    should((await queue.add('Hello, World!'))[0]).be.ok();
 
     // Should get message back
-    const msg = await queue.get();
-    expect(msg._id).toBeDefined();
+    const msg = (await queue.get())[0];
+    should(msg._id).be.ok();
     await bluebird.delay(100);
 
     // Ping it
-    expect(await queue.ping(msg.ack)).toBeDefined();
+    should(await queue.ping(msg.ack)).be.ok();
     await bluebird.delay(100);
 
     // ACK it
-    expect(await queue.ack(msg.ack)).toBeDefined();
+    should(await queue.ack(msg.ack)).be.ok();
 
     // Queue should now be empty
-    expect(await queue.get()).toBeUndefined();
+    should((await queue.get())[0]).not.be.ok();
   });
 
   it("makes sure an acked message can't be pinged again", async () => {
-    queue = new MongoDbQueue(client, 'ping-2', { visibility: 0.2 });
-    expect(await queue.publish('Hello, World!')).toBeDefined();
+    queue = new Queue(client, 'ping-2', { visibility: 0.2 });
+    should((await queue.add('Hello, World!'))[0]).be.ok();
 
     // Get it back
-    const msg = await queue.get();
-    expect(msg._id).toBeDefined();
+    const msg = (await queue.get())[0];
+    should(msg._id).be.ok();
 
     // ACK it
-    expect(await queue.ack(msg.ack)).toBeDefined();
+    should(await queue.ack(msg.ack)).be.ok();
 
     // Should not be possible
     try {
@@ -58,28 +59,28 @@ describe('ping', () => {
   });
 
   it('makes sure ping options override queue options', async () => {
-    queue = new MongoDbQueue(client, 'ping-3', { visibility: 0.2 });
-    expect(await queue.publish('Hello, World!')).toBeDefined();
+    queue = new Queue(client, 'ping-3', { visibility: 0.2 });
+    should((await queue.add('Hello, World!'))[0]).be.ok();
 
     // Get it back
-    let msg = await queue.get();
-    expect(msg._id).toBeDefined();
+    let msg = (await queue.get())[0];
+    should(msg._id).be.ok();
     await bluebird.delay(100);
 
     // ping it with a longer visibility
-    expect(await queue.ping(msg.ack, { visibility: 0.4 })).toBeDefined();
+    should(await queue.ping(msg.ack, { visibility: 0.4 })).be.ok();
     // wait longer than queue visibility, but shorter than msg visibility
     await bluebird.delay(300);
 
     // Should not get a message
-    expect(await queue.get()).toBeUndefined();
+    should((await queue.get())[0]).not.be.ok();
     await bluebird.delay(150);
 
     // Should be available now
     msg = await queue.get();
-    expect(msg).toBeDefined();
+    should(msg).be.ok();
 
     // And done.
-    expect(await queue.ack(msg.ack)).toBeDefined();
+    should(await queue.ack(msg.ack)).be.ok();
   });
 });

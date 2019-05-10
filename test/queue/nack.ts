@@ -1,6 +1,7 @@
 import bluebird from 'bluebird';
-import setup from '../test/support/setup';
-import MongoDbQueue from '../src/lib';
+import should from 'should';
+import setup from '../support/setup';
+import Queue from '../../src/lib/Queue';
 
 describe('nack', () => {
   let client;
@@ -8,7 +9,7 @@ describe('nack', () => {
 
   beforeEach(async () => {
     ({ client } = await setup());
-    queue = new MongoDbQueue(client, 'nack');
+    queue = new Queue(client, 'nack');
   });
 
   afterEach(async () => {
@@ -16,12 +17,12 @@ describe('nack', () => {
   });
 
   it('checks nack functionality', async () => {
-    expect(await queue.publish('Hello, World!')).toBeDefined();
-    let msg = await queue.get();
-    expect(msg._id).toBeDefined();
+    should(await queue.add('Hello, World!')).be.ok();
+    let msg = (await queue.get())[0];
+    should(msg._id).be.ok();
 
     // nack msg -> put it back into queue
-    expect(await queue.nack(msg.ack)).toBeDefined();
+    should(await queue.nack(msg.ack)).be.ok();
 
     // ACKing it should not work now
     try {
@@ -45,20 +46,20 @@ describe('nack', () => {
     }
 
     // But fetching it again should work now
-    msg = await queue.get();
-    expect(msg._id).toBeDefined();
+    msg = (await queue.get())[0];
+    should(msg._id).be.ok();
 
     // now ack it
-    expect(await queue.ack(msg.ack)).toBeDefined();
+    should(await queue.ack(msg.ack)).be.ok();
   });
 
   it('checks nack with delay functionality', async () => {
-    expect(await queue.publish('Hello, World!')).toBeDefined();
-    let msg = await queue.get();
-    expect(msg._id).toBeDefined();
+    should(await queue.add('Hello, World!')).be.ok();
+    let msg = (await queue.get())[0];
+    should(msg._id).be.ok();
 
     // nack msg -> put it back into queue
-    expect(await queue.nack(msg.ack, { delay: 0.2 })).toBeDefined();
+    should(await queue.nack(msg.ack, { delay: 0.2 })).be.ok();
 
     // ACKing it should not work now
     try {
@@ -81,14 +82,14 @@ describe('nack', () => {
       // else ok
     }
     // getting should not work now
-    expect(await queue.get(msg.ack)).toBeUndefined();
+    should((await queue.get(msg.ack))[0]).not.be.ok();
     await bluebird.delay(200);
 
     // Now, fetching it again should work
-    msg = await queue.get();
-    expect(msg._id).toBeDefined();
+    msg = (await queue.get())[0];
+    should(msg._id).be.ok();
 
     // now ack it
-    expect(await queue.ack(msg.ack)).toBeDefined();
+    should(await queue.ack(msg.ack)).be.ok();
   });
 });

@@ -8,7 +8,7 @@ import { MongoClient, Collection } from 'mongodb';
 import { EventEmitter } from 'eventemitter3';
 import Debug = require('debug');
 import DateHelper from './DateHelper';
-import { IAddMessageOptions } from './types';
+import { IAddMessageOptions, IMessage } from './types';
 
 const debug = Debug('mongodb-promise-queue:queue');
 
@@ -82,7 +82,13 @@ export default class Queue extends EventEmitter {
     const result = await collection.insertMany(messages);
 
     // These need to be converted because they're in a weird format.
-    return result.insertedIds;
+    const insertedIds = [];
+    for (const key of Object.keys(result.insertedIds)) {
+      const numericKey = +key;
+      insertedIds[numericKey] = `${result.insertedIds[key]}`;
+    }
+
+    return insertedIds;
   }
 
   public async subscribe(messageHandler) {
@@ -134,7 +140,7 @@ export default class Queue extends EventEmitter {
         return null;
       }
 
-      const messages = await this.getMany(idleConsumers);
+      const messages = await this.get(idleConsumers);
       if (!messages.length) return null;
       debug(`subscribe: got ${messages.length}`);
       this.busyConsumers += messages.length;
@@ -203,8 +209,8 @@ export default class Queue extends EventEmitter {
     return errorResult;
   }
 
-  public async getMany(count, opts: ISubscriptionOptions = {}) {
-    debug(`getMany: count ${count}, options: ${JSON.stringify(opts || {})}`);
+  public async get(count: number = 1, opts: ISubscriptionOptions = {}): Promise<IMessage[]> {
+    debug(`get: count ${count}, options: ${JSON.stringify(opts || {})}`);
     const visibility = opts.visibility || this.options.visibility;
 
     const now = DateHelper.now();
@@ -260,54 +266,6 @@ export default class Queue extends EventEmitter {
         return await this.get(opts);
       }
     }*/
-  }
-
-  public async get(opts: ISubscriptionOptions = {}) {
-    const visibility = opts.visibility || this.options.visibility;
-
-    const query = {
-      deletedAt: null,
-      visible: { $lte: DateHelper.now() }
-    };
-
-    const sort = {
-      createdAt: 1
-    };
-
-    const update = {
-      $inc: { tries: 1 },
-      $set: {
-        ack: uuid(),
-        visible: DateHelper.nowPlusSecs(visibility)
-      }
-    };
-
-    const result = await this.collection.findOneAndUpdate(query, update, {
-      sort,
-      returnOriginal: false
-    });
-    const msg = result.value;
-
-    if (!msg) {
-      // @ts-ignore
-      return;
-    }
-
-    // if we have a deadQueue, then check the tries, else don't
-    /*if (this.options.deadQueueName) {
-      // check the tries
-      if (msg.tries > this.options.maxRetries) {
-        // So:
-        // 1) publish this message to the deadQueue
-        // 2) ack this message from the regular queue
-        // 3) call ourself to return a new message (if exists)
-        await this.deadQueueCollection.insertOne(msg);
-        await this.ack(msg.ack);
-        return await this.get(opts);
-      }
-    }*/
-
-    return msg;
   }
 
   // ----------------------------------------------------------------------

@@ -1,5 +1,6 @@
-import setup from '../test/support/setup';
-import MongoDbQueue from '../src/lib';
+import should from 'should';
+import setup from '../support/setup';
+import Queue from '../../src/lib/Queue';
 
 const TOTAL = 250;
 
@@ -16,22 +17,22 @@ describe('many', () => {
   });
 
   it('checks if many messages can be inserted at once and gotten back', async () => {
-    queue = new MongoDbQueue(client, 'many-1');
+    queue = new Queue(client, 'many-1');
     const messagesToQueue = [];
     for (let i = 0; i < TOTAL; i += 1) {
       messagesToQueue.push(`no=${i}`);
     }
 
-    const messageIds = await queue.publish(messagesToQueue);
-    expect(messageIds.length).toBe(TOTAL);
+    const messageIds = await queue.add(messagesToQueue);
+    should(messageIds.length).be.equal(TOTAL);
     const messages = [];
     let message;
-    while ((message = await queue.get())) {
+    while ((message = (await queue.get())[0])) {
       messages.push(message);
     }
 
     // Should have received all messages now
-    expect(messages.length).toBe(TOTAL);
+    should(messages.length).be.equal(TOTAL);
 
     // ACK them
     for (message of messages) {
@@ -40,21 +41,21 @@ describe('many', () => {
   });
 
   it('checks if many messages can be inserted one after another and gotten back', async () => {
-    queue = new MongoDbQueue(client, 'many-2');
+    queue = new Queue(client, 'many-2');
     const messageIds = [];
     for (let i = 0; i < TOTAL; i += 1) {
-      messageIds.push(await queue.publish(`no=${i}`));
+      messageIds.push(await queue.add(`no=${i}`));
     }
-    expect(messageIds.length).toBe(TOTAL);
+    should(messageIds.length).be.equal(TOTAL);
 
     const messages = [];
     let message;
-    while ((message = await queue.get())) {
+    while ((message = (await queue.get())[0])) {
       messages.push(message);
     }
 
     // Should have received all messages now
-    expect(messages.length).toBe(TOTAL);
+    should(messages.length).be.equal(TOTAL);
 
     // ACK them
     for (message of messages) {
@@ -62,10 +63,10 @@ describe('many', () => {
     }
   });
 
-  it('should not be possible to publish zero messages', async () => {
-    queue = new MongoDbQueue(client, 'many-3');
+  it('should not be possible to add zero messages', async () => {
+    queue = new Queue(client, 'many-3');
     try {
-      await queue.publish([]);
+      await queue.add([]);
       throw new Error('Successfully added zero messages');
     } catch (e) {
       if (e.message === 'assert.fail()') {

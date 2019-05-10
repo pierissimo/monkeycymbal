@@ -1,6 +1,7 @@
 import bluebird from 'bluebird';
-import setup from '../test/support/setup';
-import MongoDbQueue from '../src/lib';
+import should from 'should';
+import setup from '../support/setup';
+import Queue from '../../src/lib/Queue';
 
 describe('visibility', () => {
   let client;
@@ -8,7 +9,7 @@ describe('visibility', () => {
 
   beforeEach(async () => {
     ({ client } = await setup());
-    queue = new MongoDbQueue(client, 'visibility', { visibility: 1 });
+    queue = new Queue(client, 'visibility', { visibility: 0.1 });
   });
 
   afterEach(async () => {
@@ -16,30 +17,30 @@ describe('visibility', () => {
   });
 
   it('checks is message is back in queue after visibility runs out', async () => {
-    expect(await queue.publish('Hello, World!')).toBeDefined();
-    expect(await queue.get()).toBeDefined();
+    should(await queue.add('Hello, World!')).be.ok();
+    should((await queue.get())[0]).be.ok();
 
     // wait a bit so the message goes back into the queue
-    await bluebird.delay(1500);
+    await bluebird.delay(150);
 
     // Fetch it again
-    const msg = await queue.get();
-    expect(msg._id).toBeDefined();
+    const msg = (await queue.get())[0];
+    should(msg._id).be.ok();
 
     // ACK it
     await queue.ack(msg.ack);
 
-    expect(await queue.get()).toBeUndefined();
+    should((await queue.get())[0]).not.be.ok();
   });
 
   it("checks that a late ack doesn't remove the msg", async () => {
-    expect(await queue.publish('Hello, World!')).toBeDefined();
-    let msg = await queue.get();
+    should(await queue.add('Hello, World!')).be.ok();
+    let msg = (await queue.get())[0];
     const oldAck = msg.ack;
-    expect(msg.ack).toBeDefined();
+    should(msg.ack).be.ok();
 
     // let it time out
-    await bluebird.delay(1500);
+    await bluebird.delay(150);
     try {
       await queue.ack(oldAck);
       throw new Error('Successfully acked timed out message');
@@ -51,36 +52,36 @@ describe('visibility', () => {
     }
 
     // fetch again, ack should now be different
-    msg = await queue.get();
-    expect(msg.ack).not.toBe(oldAck);
+    msg = (await queue.get())[0];
+    should(msg.ack).not.be.equal(oldAck);
 
     // and finalize
     await queue.ack(msg.ack);
-    expect(await queue.get()).toBeUndefined();
+    should((await queue.get())[0]).not.be.ok();
   });
 
   it('checks if message visibility overrides queue visibility', async () => {
-    expect(await queue.publish('Hello, World!')).toBeDefined();
-    let msg = await queue.get({ visibility: 0.3 });
-    expect(msg._id).toBeDefined();
+    should(await queue.add('Hello, World!')).be.ok();
+    let msg = (await queue.get(1, { visibility: 0.3 }))[0];
+    should(msg._id).be.ok();
 
     // Wait for the regular visibility to run out
     await bluebird.delay(200);
 
     // This should not return anything
-    msg = await queue.get();
-    expect(msg).toBeUndefined();
+    msg = (await queue.get())[0];
+    should(msg).not.be.ok();
 
     // wait a bit so the message goes back into the queue
     await bluebird.delay(200);
 
     // Now it should be there again
-    msg = await queue.get();
-    expect(msg._id).toBeDefined();
+    msg = (await queue.get())[0];
+    should(msg._id).be.ok();
 
     // ACK it
     await queue.ack(msg.ack);
 
-    expect(await queue.get()).toBeUndefined();
+    should((await queue.get())[0]).not.be.ok();
   });
 });

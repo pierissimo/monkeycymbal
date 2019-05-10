@@ -96,8 +96,13 @@ export default class Channel {
       }));
       const result = await collection.insertMany(messages);
 
-      // These need to be converted because they're in a weird format.
-      return result.insertedIds;
+      const insertedIds = [];
+      for (const key of Object.keys(result.insertedIds)) {
+        const numericKey = +key;
+        insertedIds[numericKey] = `${result.insertedIds[key]}`;
+      }
+
+      return insertedIds;
     });
 
     if (result.length !== 1) return result;
