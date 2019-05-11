@@ -47,7 +47,6 @@ jobs:
       #   - run:
       #     name: audit
       #     command: npm audit
-      - setup_remote_docker
       - run:
           name: do a release
           command: npx semantic-release

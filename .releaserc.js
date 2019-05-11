@@ -16,7 +16,8 @@ module.exports = {
       {
         failComment: false, // don't create a 'release failed' issue on the repo
         releasedLabels: ['published'], // tag PRs with [published] when release succeeded
-        successComment: 'chore(release): ${nextRelease.version} [skip ci]\\n\\n${nextRelease.notes}'
+        successComment: 'chore(release): ${nextRelease.version} [skip ci]\\n\\n${nextRelease.notes}',
+        assets: [{ path: 'package.json', label: 'package.json' }]
       }
     ]
   ]
