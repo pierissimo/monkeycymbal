@@ -30,9 +30,7 @@ jobs:
             - v2-npm-deps-
       - run:
           name: install NPM dependencies
-          command: |
-            echo -e "//registry.npmjs.org/:_authToken=$NPM_TOKEN\nscope=@oneflow" > .npmrc
-            yarn
+          command: yarn
       - save_cache:
           key: v2-npm-deps-{{ .Branch }}-{{ checksum "package.json" }}-{{ checksum "yarn.lock" }}
           paths:
