@@ -20,11 +20,11 @@ describe('clean', () => {
   it('checks clean does not change an empty queue', async () => {
     queue = new Queue(client, 'myTopic_queue');
     await queue.initialize();
-    should(await queue.size()).be.equal(0);
-    should(await queue.total()).be.equal(0);
+    should(await queue.waitingCount()).be.equal(0);
+    should(await queue.totalCount()).be.equal(0);
     await queue.clean();
-    should(await queue.size()).be.equal(0);
-    should(await queue.total()).be.equal(0);
+    should(await queue.waitingCount()).be.equal(0);
+    should(await queue.totalCount()).be.equal(0);
   });
 
   it('check only ACKed messages are deleted', async () => {
@@ -32,25 +32,25 @@ describe('clean', () => {
     await queue.initialize();
     should(await channel.publish('Hello, World!')).be.ok();
     await queue.clean();
-    should(await queue.size()).be.equal(1);
-    should(await queue.total()).be.equal(1);
+    should(await queue.waitingCount()).be.equal(1);
+    should(await queue.totalCount()).be.equal(1);
 
     const msg = (await queue.get())[0];
     should(msg._id).be.ok();
     should(msg.payload).be.equal('Hello, World!');
-    should(await queue.size()).be.equal(0);
-    should(await queue.total()).be.equal(1);
+    should(await queue.waitingCount()).be.equal(0);
+    should(await queue.totalCount()).be.equal(1);
 
     await queue.clean();
-    should(await queue.size()).be.equal(0);
-    should(await queue.total()).be.equal(1);
+    should(await queue.waitingCount()).be.equal(0);
+    should(await queue.totalCount()).be.equal(1);
 
     should(await queue.ack(msg.ack)).be.ok();
-    should(await queue.size()).be.equal(0);
-    should(await queue.total()).be.equal(1);
+    should(await queue.waitingCount()).be.equal(0);
+    should(await queue.totalCount()).be.equal(1);
 
     await queue.clean();
-    should(await queue.size()).be.equal(0);
-    should(await queue.total()).be.equal(0);
+    should(await queue.waitingCount()).be.equal(0);
+    should(await queue.totalCount()).be.equal(0);
   });
 });

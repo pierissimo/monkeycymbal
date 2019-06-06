@@ -14,7 +14,7 @@ describe('default', () => {
   });
 
   afterEach(async () => {
-    await queue.stop();
+    await queue.pause();
     await client.close();
   });
 
@@ -31,7 +31,7 @@ describe('default', () => {
           const msg = await queue.collection.findOne();
           should(msg.deletedAt).be.instanceOf(Date);
           should(msg.result).be.equal('myResult');
-          queue.stop();
+          queue.pause();
           done();
         }, 500);
 

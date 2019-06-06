@@ -308,7 +308,7 @@ export default class MongoDbQueue {
 
   // ----------------------------------------------------------------------
 
-  async size() {
+  async waitingCount() {
     await this.connect();
     const query = {
       deleted: null,
@@ -320,7 +320,7 @@ export default class MongoDbQueue {
 
   // ----------------------------------------------------------------------
 
-  async inFlight() {
+  async inFlightCount() {
     await this.connect();
     const query = {
       ack: { $exists: true },

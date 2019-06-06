@@ -12,7 +12,7 @@ describe('events', () => {
   });
 
   afterEach(async () => {
-    await queue.stop();
+    await queue.pause();
     await client.close();
   });
 
@@ -50,10 +50,11 @@ describe('events', () => {
 
   it('listen to `error` event', done => {
     queue = new Queue(client, 'queue');
-    queue.on('error', msg => {
+    queue.on('error', (msg, err) => {
       should(msg).be.ok();
       should(msg.payload).be.equal(payload);
       should(msg.errors[0].error.message).be.equal('Bad error');
+      should(err.message).be.equal('Bad error');
       done();
     });
     const payload = 'Hello world';
@@ -63,7 +64,7 @@ describe('events', () => {
     });
   });
 
-  it('listen to `died` event', done => {
+  it('listen to `dead` event', done => {
     queue = new Queue(client, 'queue', { visibility: 0.08, maxRetries: 1 });
     queue.on('dead', msg => {
       should(msg).be.ok();

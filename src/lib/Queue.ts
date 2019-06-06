@@ -17,7 +17,7 @@ const debug = Debug('mongodb-promise-queue:queue');
 const DEFAULT_OPTS = {
   visibility: 30,
   concurrency: 1,
-  pollInterval: 0.05,
+  pollInterval: 0.1,
   maxRetries: 5
 };
 
@@ -150,19 +150,232 @@ export default class Queue extends EventEmitter {
     });
   }
 */
-  public start() {
+  public resume() {
     this.setupPolling();
     this.status = 'started';
 
     return this;
   }
 
-  public stop() {
+  public pause() {
     this.status = 'stopped';
     this.intervalHandles.forEach(clearInterval);
     this.intervalHandles = [];
 
     return this;
+  }
+
+  public async get(count: number = 1, opts: ISubscriptionOptions = {}): Promise<IMessage[]> {
+    debug(`get: count ${count}, options: ${JSON.stringify(opts || {})}`);
+    await this.initialize();
+    const visibility = opts.visibility || this.options.visibility;
+    const maxRetries = opts.maxRetries || this.options.maxRetries;
+
+    const now = DateHelper.now();
+
+    const messages = await bluebird.map(
+      times(count),
+      async () => {
+        const query = {
+          deletedAt: null,
+          visible: { $lte: now }
+        };
+
+        const sort = {
+          priority: -1,
+          createdAt: 1
+        };
+        const update = {
+          $inc: { tries: 1 },
+          $set: {
+            ack: uuid(),
+            visible: DateHelper.nowPlusSecs(visibility)
+          }
+        };
+        const result = await this.collection.findOneAndUpdate(query, update, {
+          sort,
+          returnOriginal: false
+        });
+
+        const msg = result.value;
+
+        if (!msg) {
+          // @ts-ignore
+          return;
+        }
+
+        // if we have a deadQueue, then check the tries, else don't
+        if (this.deadQueue && msg.tries > maxRetries) {
+          // So:
+          // 1) publish this message to the deadQueue
+          // 2) ack this message from the regular queue
+          // 3) call ourself to return a new message (if exists)
+          await this.ack(msg.ack);
+          if (this.deadQueue) {
+            // check the tries
+            await this.deadQueue.createRecord(msg);
+          }
+          // this.emit(MessageEvent.dead, msg);
+          return (await this.get(1, opts))[0];
+        }
+
+        return msg;
+      },
+      { concurrency: 1 }
+    );
+
+    return messages.filter(m => m);
+  }
+
+  // ----------------------------------------------------------------------
+
+  public async ping(ack, opts: ISubscriptionOptions = {}) {
+    await this.initialize();
+
+    const visibility = opts.visibility || this.options.visibility;
+
+    const query = {
+      ack,
+      visible: { $gt: DateHelper.now() },
+      deletedAt: null
+    };
+
+    const update = {
+      $set: {
+        visible: DateHelper.nowPlusSecs(visibility)
+      }
+    };
+
+    const msg = await this.collection.findOneAndUpdate(query, update, {
+      returnOriginal: false
+    });
+    if (!msg.value) {
+      throw new Error(`Queue.ping(): Unidentified ack  : ${ack}`);
+    }
+
+    return `${msg.value._id}`;
+  }
+
+  // ----------------------------------------------------------------------
+
+  public async ack(ack, result?: any) {
+    await this.initialize();
+
+    const query = {
+      ack,
+      visible: { $gt: DateHelper.now() },
+      deletedAt: null
+    };
+
+    const update = {
+      $set: {
+        deletedAt: DateHelper.now(),
+        result
+      }
+    };
+
+    const msg = await this.collection.findOneAndUpdate(query, update, {
+      returnOriginal: false
+    });
+    if (!msg.value) {
+      throw new Error(`Queue.ack(): Unidentified ack : ${ack}`);
+    }
+
+    return msg.value;
+  }
+  // ----------------------------------------------------------------------
+
+  public async nack(ack, opts: ISubscriptionOptions = {}) {
+    await this.initialize();
+
+    const delay = opts.delay || this.options.delay;
+
+    const query = {
+      ack,
+      visible: { $gt: DateHelper.now() },
+      deletedAt: null
+    };
+
+    const update = {
+      $set: {
+        visible: DateHelper.nowPlusSecs(delay)
+      },
+      $unset: {
+        ack: 1
+      }
+    };
+
+    const msg = await this.collection.findOneAndUpdate(query, update, {
+      returnOriginal: false
+    });
+    if (!msg.value) {
+      throw new Error(`Queue.nack(): Unidentified ack : ${ack}`);
+    }
+
+    return msg.value;
+  }
+
+  // ----------------------------------------------------------------------
+
+  public async clean() {
+    await this.initialize();
+
+    const query = {
+      deletedAt: { $exists: true }
+    };
+
+    return await this.collection.deleteMany(query);
+  }
+
+  // ----------------------------------------------------------------------
+
+  public async totalCount() {
+    await this.initialize();
+
+    return await this.collection.countDocuments();
+  }
+
+  // ----------------------------------------------------------------------
+
+  public async waitingCount() {
+    await this.initialize();
+
+    const query = {
+      deletedAt: null,
+      visible: { $lte: DateHelper.now() }
+    };
+
+    return await this.collection.countDocuments(query);
+  }
+
+  // ----------------------------------------------------------------------
+
+  public async inFlightCount() {
+    await this.initialize();
+
+    const query = {
+      ack: { $exists: true },
+      visible: { $gt: DateHelper.now() },
+      deletedAt: null
+    };
+
+    return await this.collection.countDocuments(query);
+  }
+
+  // ----------------------------------------------------------------------
+
+  public async done() {
+    await this.initialize();
+
+    const query = {
+      deletedAt: { $exists: true }
+    };
+
+    return await this.collection.countDocuments(query);
+  }
+
+  public emit(event: MessageEvent, ...args: any[]): boolean {
+    return super.emit(event, ...args);
   }
 
   private setupPolling() {
@@ -221,7 +434,7 @@ export default class Queue extends EventEmitter {
   private async handleSuccess(msg, result) {
     // this.debug(`Success - msg._id: ${msg._id}`);
     const ackResult = await this.ack(msg.ack, result);
-    this.emit(MessageEvent.completed, ackResult);
+    this.emit(MessageEvent.completed, ackResult, result);
 
     return ackResult;
   }
@@ -234,227 +447,21 @@ export default class Queue extends EventEmitter {
       error: serializedError
     };
 
-    const { value: errorResult } = await this.collection.findOneAndUpdate(
+    const { value: updateMsg } = await this.collection.findOneAndUpdate(
       { _id: msg._id },
       { $push: { errors: errorItem } },
       { returnOriginal: false }
     );
 
-    this.emit(MessageEvent.error, errorResult);
-
-    return errorResult;
-  }
-
-  public async get(count: number = 1, opts: ISubscriptionOptions = {}): Promise<IMessage[]> {
-    debug(`get: count ${count}, options: ${JSON.stringify(opts || {})}`);
-    await this.initialize();
-    const visibility = opts.visibility || this.options.visibility;
-    const maxRetries = opts.maxRetries || this.options.maxRetries;
-
-    const now = DateHelper.now();
-
-    const messages = await bluebird.map(
-      times(count),
-      async () => {
-        const query = {
-          deletedAt: null,
-          visible: { $lte: now }
-        };
-
-        const sort = {
-          priority: -1,
-          createdAt: 1
-        };
-        const update = {
-          $inc: { tries: 1 },
-          $set: {
-            ack: uuid(),
-            visible: DateHelper.nowPlusSecs(visibility)
-          }
-        };
-        const result = await this.collection.findOneAndUpdate(query, update, {
-          sort,
-          returnOriginal: false
-        });
-
-        const msg = result.value;
-
-        if (!msg) {
-          // @ts-ignore
-          return;
-        }
-
-        // if we have a deadQueue, then check the tries, else don't
-        if (msg.tries > maxRetries) {
-          // So:
-          // 1) publish this message to the deadQueue
-          // 2) ack this message from the regular queue
-          // 3) call ourself to return a new message (if exists)
-          await this.ack(msg.ack);
-          if (this.deadQueue) {
-            // check the tries
-            await this.deadQueue.createRecord(msg);
-          }
-          this.emit(MessageEvent.dead, msg);
-          return (await this.get(1, opts))[0];
-        }
-
-        return msg;
-      },
-      { concurrency: 1 }
-    );
-
-    return messages.filter(m => m);
-  }
-
-  // ----------------------------------------------------------------------
-
-  async ping(ack, opts: ISubscriptionOptions = {}) {
-    await this.initialize();
-
-    const visibility = opts.visibility || this.options.visibility;
-
-    const query = {
-      ack,
-      visible: { $gt: DateHelper.now() },
-      deletedAt: null
-    };
-
-    const update = {
-      $set: {
-        visible: DateHelper.nowPlusSecs(visibility)
-      }
-    };
-
-    const msg = await this.collection.findOneAndUpdate(query, update, {
-      returnOriginal: false
-    });
-    if (!msg.value) {
-      throw new Error(`Queue.ping(): Unidentified ack  : ${ack}`);
+    this.emit(MessageEvent.error, updateMsg, error);
+    if (msg.tries > this.options.maxRetries) {
+      this.emit(MessageEvent.dead, updateMsg);
     }
 
-    return `${msg.value._id}`;
+    return updateMsg;
   }
 
-  // ----------------------------------------------------------------------
-
-  async ack(ack, result?: any) {
-    await this.initialize();
-
-    const query = {
-      ack,
-      visible: { $gt: DateHelper.now() },
-      deletedAt: null
-    };
-
-    const update = {
-      $set: {
-        deletedAt: DateHelper.now(),
-        result
-      }
-    };
-
-    const msg = await this.collection.findOneAndUpdate(query, update, {
-      returnOriginal: false
-    });
-    if (!msg.value) {
-      throw new Error(`Queue.ack(): Unidentified ack : ${ack}`);
-    }
-
-    return msg.value;
-  }
-  // ----------------------------------------------------------------------
-
-  async nack(ack, opts: ISubscriptionOptions = {}) {
-    await this.initialize();
-
-    const delay = opts.delay || this.options.delay;
-
-    const query = {
-      ack,
-      visible: { $gt: DateHelper.now() },
-      deletedAt: null
-    };
-
-    const update = {
-      $set: {
-        visible: DateHelper.nowPlusSecs(delay)
-      },
-      $unset: {
-        ack: ''
-      }
-    };
-
-    const msg = await this.collection.findOneAndUpdate(query, update, {
-      returnOriginal: false
-    });
-    if (!msg.value) {
-      throw new Error(`Queue.nack(): Unidentified ack : ${ack}`);
-    }
-
-    return msg.value;
-  }
-
-  // ----------------------------------------------------------------------
-
-  async clean() {
-    await this.initialize();
-
-    const query = {
-      deletedAt: { $exists: true }
-    };
-
-    return await this.collection.deleteMany(query);
-  }
-
-  // ----------------------------------------------------------------------
-
-  async total() {
-    await this.initialize();
-
-    return await this.collection.countDocuments();
-  }
-
-  // ----------------------------------------------------------------------
-
-  async size() {
-    await this.initialize();
-
-    const query = {
-      deletedAt: null,
-      visible: { $lte: DateHelper.now() }
-    };
-
-    return await this.collection.countDocuments(query);
-  }
-
-  // ----------------------------------------------------------------------
-
-  async inFlight() {
-    await this.initialize();
-
-    const query = {
-      ack: { $exists: true },
-      visible: { $gt: DateHelper.now() },
-      deletedAt: null
-    };
-
-    return await this.collection.countDocuments(query);
-  }
-
-  // ----------------------------------------------------------------------
-
-  async done() {
-    await this.initialize();
-
-    const query = {
-      deletedAt: { $exists: true }
-    };
-
-    return await this.collection.countDocuments(query);
-  }
-
-  async createIndexes() {
+  private async createIndexes() {
     const indexPromises = [
       this.collection.createIndex({ deletedAt: 1, visible: 1 }, { background: true }),
       this.collection.createIndex({ deletedAt: 1, createdAt: 1, visible: 1 }, { background: true }),
@@ -471,9 +478,5 @@ export default class Queue extends EventEmitter {
     }
 
     return bluebird.all(indexPromises);
-  }
-
-  public emit(event: MessageEvent, ...args: any[]): boolean {
-    return super.emit(event, ...args);
   }
 }

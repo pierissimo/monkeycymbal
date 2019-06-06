@@ -17,7 +17,7 @@ describe('subscribe', () => {
   });
 
   afterEach(async () => {
-    await queue.stop();
+    await queue.pause();
     await client.close();
     sinon.restore();
   });
