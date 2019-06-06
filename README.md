@@ -1,9 +1,6 @@
 
 <div align="center">
-  <br/>
   <!--<img src="./support/logo@2x.png" width="300" />-->
-  <br/>
-  <br/>
   <h2>Monkey Cymbal</h2>
   <p>
     Production ready, MongoDB-based queue for Node.
@@ -12,10 +9,10 @@
   <br/>
   <p>
     <a href="https://circleci.com/gh/pierissimo/monkeycymbal">
-      <img src="https://img.shields.io/circleci/build/github/pierissimo/monkeycymbal.svg"/>
+      <img src="https://img.shields.io/circleci/build/github/pierissimo/monkeycymbal.svg?style=for-the-badge"/>
     </a>
     <a href="https://codecov.io/gh/pierissimo/monkeycymbal">
-      <img src="https://img.shields.io/circleci/pierissimo/monkeycymbal/master.svg"/>
+      <img src="https://img.shields.io/codecov/c/github/pierissimo/monkeycymbal.svg?style=for-the-badge"/>
     </a>
   </p>
 </div>
