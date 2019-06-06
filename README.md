@@ -6,33 +6,18 @@
   <br/>
   <h2>Monkey Cymbal</h2>
   <p>
-    Reliable, production ready, MongoDB-based queue for Node.
+    Production ready, MongoDB-based queue for Node.
   </p>
   <br/>
   <br/>
-  <!--<p>
-    <a href="https://gitter.im/OptimalBits/bull">
-      <img src="https://badges.gitter.im/Join%20Chat.svg"/>
+  <p>
+    <a href="https://circleci.com/gh/pierissimo/monkeycymbal">
+      <img src="https://img.shields.io/circleci/build/github/pierissimo/monkeycymbal.svg"/>
     </a>
-    <a href="https://gitter.im/OptimalBits/bull">
-      <img src="https://img.shields.io/npm/dm/bull.svg?maxAge=2592000"/>
+    <a href="https://codecov.io/gh/pierissimo/monkeycymbal">
+      <img src="https://img.shields.io/circleci/pierissimo/monkeycymbal/master.svg"/>
     </a>
-    <a href="http://travis-ci.org/OptimalBits/bull">
-      <img src="https://img.shields.io/travis/OptimalBits/bull/master.svg"/>
-    </a>
-    <a href="http://badge.fury.io/js/bull">
-      <img src="https://badge.fury.io/js/bull.svg"/>
-    </a>
-    <a href="https://coveralls.io/github/OptimalBits/bull?branch=master">
-      <img src="https://coveralls.io/repos/github/OptimalBits/bull/badge.svg?branch=master"/>
-    </a>
-    <a href="http://isitmaintained.com/project/OptimalBits/bull">
-      <img src="http://isitmaintained.com/badge/open/optimalbits/bull.svg"/>
-    </a>
-    <a href="http://isitmaintained.com/project/OptimalBits/bull">
-      <img src="http://isitmaintained.com/badge/resolution/optimalbits/bull.svg"/>
-    </a>
-  </p>-->
+  </p>
 </div>
 
 
