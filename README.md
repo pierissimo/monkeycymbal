@@ -147,7 +147,7 @@ MongoDB.
 | `queueName` **required**                    | `string`                                          | The name of the queue                                   |
 | `options`                                   | [SubscriptionOptions](#subscriptionoptions)      |                                                         |
 
-## SubscriptionOptions
+##### SubscriptionOptions
 | Arguments                                   | Type      | Default                  | Description                                             |
 | -----------------------------------------   | --------- | --------------------- | ------------------------------------------------------- |
 | `visibility`                                | `number` (seconds) | 10              | After a message is received to prevent other consumers from processing the message again, Monkeycymbal sets a visibility timeout, a period of time during which Monkeycymbal prevents other consumers from receiving and processing the message.|
@@ -159,7 +159,7 @@ MongoDB.
 | `deadQueue`                              | `string` or [Queue](#queue) instance   |            | Messages that have been retried over maxRetries will be pushed to this queue for later inspection.                                                          |
 
 
-## Queue.subscribe
+#### Queue.subscribe
 ```ts
 queue.subscribe(handler);
 ```
@@ -167,54 +167,54 @@ queue.subscribe(handler);
 Defines a processing function for the jobs in a given Queue and start processing.
 The handler function receive `msg` as argument.
 
-## Queue.add
+#### Queue.add
 ```ts
 queue.add(msg, AddMessageOptions);
 ```
 
 Adds a message to the queue.
 
-#### AddMessageOptions
+##### AddMessageOptions
 | Arguments                                   | Type      | Default                  | Description                                             |
 | -----------------------------------------   | --------- | --------------------- | ------------------------------------------------------- |
 | `priority`                                | `number` | 1              | Optional priority value. It ranges from -Infinity to +Infinity|
 
-## Queue.pause
+#### Queue.pause
 ```ts
 queue.pause();
 ```
 
 Pause a queue. A paused queue will not process new jobs until resumed. 
 
-## Queue.resume
+#### Queue.resume
 ```ts
 queue.resume();
 ```
 
 Resume a queue after being paused.
 
-## Queue.ping
+#### Queue.ping
 ```ts
 queue.ping(msg.ack);
 ```
 
 Ping a message to keep it's visibility open for long-running tasks.
 
-## Queue.totalCount
+#### Queue.totalCount
 ```ts
 queue.totalCount();
 ```
 
 Returns the total number of records in the collection.
 
-## Queue.waitingCount
+#### Queue.waitingCount
 ```ts
 queue.waitingCount();
 ```
 
 Returns the total number of messages that are waiting to be processed.
 
-## Queue.inFlightCount
+#### Queue.inFlightCount
 ```ts
 queue.inFlightCount();
 ```
@@ -240,20 +240,20 @@ This is the Channel constructor. It creates a new Channel.
 | `options`                                   | [SubscriptionOptions](#subscriptionoptions)      |                                                         |
 
 
-## Channel.publish
+#### Channel.publish
 ```ts
 channel.publish(msg, PublishOptions);
 ```
 
 Publish messages to the queues subscribed to the topic.
 
-#### PublishOptions
+##### PublishOptions
 | Arguments                                   | Type      | Default                  | Description                                             |
 | -----------------------------------------   | --------- | --------------------- | ------------------------------------------------------- |
 | `priority`                                | `number` | 1              | Optional priority value. It ranges from -Infinity to +Infinity|
 
 
-## Channel.subscribe
+#### Channel.subscribe
 ```ts
 channel.subscribe(handler, queueName, SubscriptionOptions): Queue;
 ```

@@ -37,10 +37,10 @@ jobs:
             - node_modules
       - run:
           name: test
-          command: npm run cover
+          command: yarn cover
       - run:
           name: build
-          command: npm run build
+          command: yarn build
       - run:
           name: upload coverage report
           command: bash <(curl -s https://codecov.io/bash) -t $CODECOV_TOKEN
