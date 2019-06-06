@@ -49,5 +49,8 @@ jobs:
       #     name: audit
       #     command: npm audit
       - run:
+          name: allow same version
+          command: npm config set allow-same-version true
+      - run:
           name: do a release
           command: npx semantic-release
