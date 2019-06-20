@@ -7,6 +7,7 @@
     "name": "Piero Maltese",
     "url": "https://github.com/pierissimo"
   },
+  "license": "MIT",
   "main": "./build/src/lib/index.js",
   "types": "./build/src/index.d.ts",
   "scripts": {
