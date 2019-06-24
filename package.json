@@ -8,7 +8,7 @@
     "url": "https://github.com/pierissimo"
   },
   "license": "MIT",
-  "main": "./build/src/lib/index.js",
+  "main": "./build/src/index.js",
   "types": "./build/src/index.d.ts",
   "scripts": {
     "build": "tsc -p ./tsconfig.release.json",
