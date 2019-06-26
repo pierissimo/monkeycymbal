@@ -1,6 +1,7 @@
 {
   "name": "monkeycymbal",
   "version": "1.0.1",
+  "homepage": "https://github.com/pierissimo/monkeycymbal",
   "description": "Production ready, MongoDB-based queue for Node.",
   "author": {
     "email": "maltesepiero@gmail.com",
