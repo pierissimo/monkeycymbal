@@ -422,7 +422,8 @@ export default class Queue extends EventEmitter {
         // await this.stopPinger(msg);
         return this.handleError(msg, msgErr);
       } finally {
-        this.busyConsumers -= 1;
+        const busyConsumers = this.busyConsumers - 1;
+        this.busyConsumers = Math.max(busyConsumers, 0);
       }
     };
   }
