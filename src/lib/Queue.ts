@@ -91,8 +91,8 @@ export default class Queue extends EventEmitter {
   }
 
   public async add(payload, opts: IAddMessageOptions = {}) {
-    assert.ok(this.client, '');
     await this.initialize();
+    assert.ok(this.client, '');
     const delay = opts.delay || this.options.delay;
     const priority = opts.priority || 1;
 
@@ -138,18 +138,6 @@ export default class Queue extends EventEmitter {
     return this;
   }
 
-  /*public subscribeWithChangeStream() {
-    const pipeline = [
-      /!*{ $match: { 'fullDocument.username': 'alice' } },
-      { $addFields: { newField: 'this is an added field!' } }*!/
-    ];
-
-    const changeStream = this.collection.watch(pipeline);
-    changeStream.on('change', (next, ...rest) => {
-      debug(next, rest);
-    });
-  }
-*/
   public resume() {
     this.setupPolling();
     this.status = 'started';
