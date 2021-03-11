@@ -40,7 +40,10 @@ export default class Channel {
   async connect() {
     if (this.isConnected) return this.client;
     if (!this.client) {
-      this.client = await MongoClient.connect(this.connectionUrl);
+      this.client = await MongoClient.connect(this.connectionUrl, { 
+        useUnifiedTopology: true, 
+        useNewUrlParser : true
+      });
     }
 
     /*if (!this.collection) {

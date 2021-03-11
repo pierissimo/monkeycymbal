@@ -69,7 +69,10 @@ export default class Queue extends EventEmitter {
     if (typeof this.initializePromise !== 'undefined') return this.initializePromise;
     this.initializePromise = new Promise(async resolve => {
       if (!this.client) {
-        this.client = await MongoClient.connect(this.connectionUrl);
+        this.client = await MongoClient.connect(this.connectionUrl, {
+          useUnifiedTopology: true,
+          useNewUrlParser: true
+        });
       }
 
       this.collection = this.client.db().collection(this.collectionName);
