@@ -73,7 +73,11 @@ export default class Queue extends EventEmitter {
       }
 
       this.collection = this.client.db().collection(this.collectionName);
-      await this.client.db().createCollection(this.collectionName);
+      const collectionExists = await this.isCollectionExists(this.collectionName);
+      if (!collectionExists) {
+        await this.client.db().createCollection(this.collectionName);
+      }
+      
       if (this.options.deadQueue) {
         if (typeof this.options.deadQueue === 'string') {
           this.deadQueue = new Queue(this.client, this.options.deadQueue);
@@ -467,5 +471,14 @@ export default class Queue extends EventEmitter {
     }
 
     return bluebird.all(indexPromises);
+  }
+
+  private async isCollectionExists(name) {
+    return new Promise((resolve, reject) => {
+      return this.client.db().listCollections({ name }).toArray((error, items = []) => {
+        if (error) reject(error)
+        resolve(items.length > 0)
+      });
+    });
   }
 }

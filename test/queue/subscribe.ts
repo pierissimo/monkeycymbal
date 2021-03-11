@@ -85,4 +85,33 @@ describe('subscribe', () => {
       });
     })();
   });
+
+  it('should not create a collection if already exists', function(done) {
+    this.timeout(10000);
+    
+    (async () => {
+      let processed = 0;
+      let isCollectionExistsStub = sinon.spy(Queue.prototype, 'isCollectionExists');
+      const collectionToCreate = 'default';
+      await client.db().createCollection(collectionToCreate);
+
+      queue = new Queue(client, 'default', { concurrency: 10, pollInterval: 1 });
+      await queue.subscribe(() => 'myResult');
+      queue.on('completed', async () => {
+        processed += 1;
+        if (processed === 50) {
+          should(queue.get.callCount).be.equal(5);
+
+          should(isCollectionExistsStub.callCount).be.equal(1);
+          should(isCollectionExistsStub.getCall(0).args.length).be.equal(1)
+          should(isCollectionExistsStub.getCall(0).args[0]).be.equal(collectionToCreate);
+
+          done();
+        }
+      });
+      sinon.spy(queue, 'get');
+
+      await bluebird.map(times(50), () => queue.add('Hello, World!'));
+    })();
+  });
 });
