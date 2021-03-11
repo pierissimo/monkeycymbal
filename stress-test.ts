@@ -25,6 +25,7 @@ const checkCompleted = () => {
   }
 };
 
+
 /*queue2.on('completed', () => {
   completedCount += 1;
   checkCompleted();
