@@ -91,7 +91,7 @@ describe('subscribe', () => {
     
     (async () => {
       let processed = 0;
-      let isCollectionExistsStub = sinon.spy(Queue.prototype, 'isCollectionExists');
+      let doesCollectionExistStub = sinon.spy(Queue.prototype, 'doesCollectionExist');
       const collectionToCreate = 'default';
       await client.db().createCollection(collectionToCreate);
 
@@ -102,9 +102,9 @@ describe('subscribe', () => {
         if (processed === 50) {
           should(queue.get.callCount).be.equal(5);
 
-          should(isCollectionExistsStub.callCount).be.equal(1);
-          should(isCollectionExistsStub.getCall(0).args.length).be.equal(1)
-          should(isCollectionExistsStub.getCall(0).args[0]).be.equal(collectionToCreate);
+          should(doesCollectionExistStub.callCount).be.equal(1);
+          should(doesCollectionExistStub.getCall(0).args.length).be.equal(1)
+          should(doesCollectionExistStub.getCall(0).args[0]).be.equal(collectionToCreate);
 
           done();
         }

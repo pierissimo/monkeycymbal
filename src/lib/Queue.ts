@@ -76,8 +76,8 @@ export default class Queue extends EventEmitter {
       }
 
       this.collection = this.client.db().collection(this.collectionName);
-      const collectionExists = await this.isCollectionExists(this.collectionName);
-      if (!collectionExists) {
+      const collectionExist = await this.doesCollectionExist(this.collectionName);
+      if (!collectionExist) {
         await this.client.db().createCollection(this.collectionName);
       }
       
@@ -476,7 +476,7 @@ export default class Queue extends EventEmitter {
     return bluebird.all(indexPromises);
   }
 
-  private async isCollectionExists(name) {
+  private async doesCollectionExist(name) {
     return new Promise((resolve, reject) => {
       return this.client.db().listCollections({ name }).toArray((error, items = []) => {
         if (error) reject(error)
