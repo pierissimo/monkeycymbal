@@ -19,7 +19,7 @@ jobs:
   build:
     docker:
       - image: circleci/node:10-stretch
-      - image: circleci/mongo:3.6-jessie
+      - image: circleci/mongo:4.4
     steps:
       - checkout
       - restore_cache:

@@ -69,11 +69,18 @@ export default class Queue extends EventEmitter {
     if (typeof this.initializePromise !== 'undefined') return this.initializePromise;
     this.initializePromise = new Promise(async resolve => {
       if (!this.client) {
-        this.client = await MongoClient.connect(this.connectionUrl);
+        this.client = await MongoClient.connect(this.connectionUrl, {
+          useUnifiedTopology: true,
+          useNewUrlParser: true
+        });
       }
 
       this.collection = this.client.db().collection(this.collectionName);
-      await this.client.db().createCollection(this.collectionName);
+      const collectionExist = await this.doesCollectionExist(this.collectionName);
+      if (!collectionExist) {
+        await this.client.db().createCollection(this.collectionName);
+      }
+      
       if (this.options.deadQueue) {
         if (typeof this.options.deadQueue === 'string') {
           this.deadQueue = new Queue(this.client, this.options.deadQueue);
@@ -467,5 +474,14 @@ export default class Queue extends EventEmitter {
     }
 
     return bluebird.all(indexPromises);
+  }
+
+  private async doesCollectionExist(name) {
+    return new Promise((resolve, reject) => {
+      return this.client.db().listCollections({ name }).toArray((error, items = []) => {
+        if (error) reject(error)
+        resolve(items.length > 0)
+      });
+    });
   }
 }
