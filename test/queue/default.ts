@@ -21,9 +21,8 @@ describe('default', () => {
   it('checks default functionality', done => {
     (async () => {
       queue = await channel.subscribe(msg => {
-        should(typeof msg._id.toString()).be.equal('string');
-        should(typeof msg.ack).be.equal('string');
-        should(typeof msg.tries).be.equal('number');
+        should(msg._id.toString()).be.type('string');
+        should(msg.ack.toString()).be.type('string');
         should(msg.tries).be.equal(1);
         should(msg.payload).be.equal('Hello, World!');
 

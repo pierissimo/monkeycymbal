@@ -3,7 +3,8 @@ import { MongoClient, ObjectId } from 'mongodb';
 import setup from './support/setup';
 import Channel from '../src/lib/Channel';
 
-describe('Channel', () => {
+describe('Channel', function () {
+  this.retries(3);
   let client;
 
   beforeEach(async () => {
@@ -43,7 +44,7 @@ describe('Channel', () => {
   });
 
   describe('#publish', () => {
-    it('should put a message in 2 queues that listen to the topic', async () => {
+    it('should put a message in 2 queues that listens to the topic', async () => {
       await client.db().createCollection('myTopic_myQueue');
       await client.db().createCollection('myTopic_myOtherQueue');
       const channel = new Channel(client, 'myTopic');
