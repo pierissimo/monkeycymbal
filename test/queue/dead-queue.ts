@@ -14,7 +14,7 @@ describe('dead queue', () => {
     await client.close();
   });
 
-  it('checks that a single message going over 5 tries appears on dead-queue', async () => {
+  it('upon exceeding five attempts, a message will be transferred to the dead-queue', async () => {
     const deadQueue = new Queue(client, 'deadQueue');
     const queue = new Queue(client, 'queue', {
       visibility: 0.1,

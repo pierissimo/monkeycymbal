@@ -22,6 +22,7 @@
     "watch": false,
     "emitDecoratorMetadata": true,
     "esModuleInterop": true,
+    "skipLibCheck": true,
     "lib": ["es7"]
   },
   "include": ["src/**/*", "examples/**/*"],
