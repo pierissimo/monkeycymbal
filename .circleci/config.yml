@@ -52,11 +52,10 @@ jobs:
           paths:
             - "~/project/"
 
-  release:
+  publish:
     docker:
       - image: circleci/node:16-stretch
     steps:
-      - checkout
       - restore_cache:
           keys:
             - v2-build-{{ .Environment.CIRCLE_SHA1 }}
