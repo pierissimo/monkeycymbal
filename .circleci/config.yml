@@ -63,5 +63,8 @@ jobs:
           name: allow same version
           command: npm config set allow-same-version true
       - run:
+          name: setup ssh
+          command: mkdir ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+      - run:
           name: do a release
           command: npx semantic-release@19
