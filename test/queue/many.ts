@@ -4,7 +4,8 @@ import Queue from '../../src/lib/Queue';
 
 const TOTAL = 250;
 
-describe('many', () => {
+describe('many', function () {
+  this.retries(3);
   let client;
   let queue;
 

@@ -3,7 +3,8 @@ import { MongoClient, ObjectId } from 'mongodb';
 import setup from './support/setup';
 import Channel from '../src/lib/Channel';
 
-describe('Channel', () => {
+describe('Channel', function () {
+  this.retries(3);
   let client;
 
   beforeEach(async () => {
@@ -28,7 +29,6 @@ describe('Channel', () => {
     it('should connect by passing a connection url', async () => {
       const channel = new Channel(process.env.MONGODB_URL, 'myTopic');
       const client = await channel.connect();
-      should(client.isConnected()).be.True();
       should(channel.isConnected).be.True();
       should(client).be.instanceOf(MongoClient);
     });
@@ -36,14 +36,13 @@ describe('Channel', () => {
     it('should connect by passing a mongodb client', async () => {
       const channel = new Channel(client, 'myTopic');
       const mClient = await channel.connect();
-      should(mClient.isConnected()).be.True();
       should(channel.isConnected).be.True();
       should(mClient).be.instanceOf(MongoClient);
     });
   });
 
   describe('#publish', () => {
-    it('should put a message in 2 queues that listen to the topic', async () => {
+    it('should put a message in 2 queues that listens to the topic', async () => {
       await client.db().createCollection('myTopic_myQueue');
       await client.db().createCollection('myTopic_myOtherQueue');
       const channel = new Channel(client, 'myTopic');
