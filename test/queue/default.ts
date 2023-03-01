@@ -1,11 +1,12 @@
 import should from 'should';
 import setup from '../support/setup';
 import Channel from '../../src/lib/Channel';
+import { Queue } from "../../src";
 // import Queue from '../../src/lib/Queue';
 
 describe('default', () => {
   let client;
-  let queue;
+  let queue: Queue;
   let channel;
 
   beforeEach(async () => {
@@ -17,6 +18,18 @@ describe('default', () => {
     await queue.pause();
     await client.close();
   });
+
+  it.only('should return the updated document', async () => {
+    queue = await channel.subscribe(() => {});
+    await queue.collection.insertOne({ name: 'first' })
+    const result = await queue.collection.findOneAndUpdate(
+      { name: 'first' },
+      { $set: { name: 'second' }},
+      { returnDocument: 'after' }
+    );
+
+    should(result.value.name).be.equal('second');
+  })
 
   it('checks default functionality', done => {
     (async () => {
