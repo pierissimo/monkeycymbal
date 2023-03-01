@@ -19,18 +19,6 @@ describe('default', () => {
     await client.close();
   });
 
-  it.only('should return the updated document', async () => {
-    queue = await channel.subscribe(() => {});
-    await queue.collection.insertOne({ name: 'first' })
-    const result = await queue.collection.findOneAndUpdate(
-      { name: 'first' },
-      { $set: { name: 'second' }},
-      { returnDocument: 'after' }
-    );
-
-    should(result.value.name).be.equal('second');
-  })
-
   it('checks default functionality', done => {
     (async () => {
       queue = await channel.subscribe(msg => {

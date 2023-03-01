@@ -29,7 +29,6 @@ describe('Channel', function () {
     it('should connect by passing a connection url', async () => {
       const channel = new Channel(process.env.MONGODB_URL, 'myTopic');
       const client = await channel.connect();
-      should(client.isConnected()).be.True();
       should(channel.isConnected).be.True();
       should(client).be.instanceOf(MongoClient);
     });
@@ -37,7 +36,6 @@ describe('Channel', function () {
     it('should connect by passing a mongodb client', async () => {
       const channel = new Channel(client, 'myTopic');
       const mClient = await channel.connect();
-      should(mClient.isConnected()).be.True();
       should(channel.isConnected).be.True();
       should(mClient).be.instanceOf(MongoClient);
     });

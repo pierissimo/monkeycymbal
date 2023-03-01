@@ -1,10 +1,11 @@
 import should from 'should';
+import { MongoClient } from 'mongodb';
 import setup from '../support/setup';
 import Queue from '../../src/lib/Queue';
 
 describe('indexes', () => {
-  let client;
-  let queue;
+  let client: MongoClient;
+  let queue: Queue
 
   beforeEach(async () => {
     ({ client } = await setup());

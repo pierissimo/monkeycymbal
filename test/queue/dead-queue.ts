@@ -58,7 +58,6 @@ describe('dead queue', () => {
 
     // Message should now be on the dead queue
     msg = (await queue.get())[0];
-    console.log(msg.tries);
     should(msg).not.be.ok();
 
     // ... where we should be able to get it
