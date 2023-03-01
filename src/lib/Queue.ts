@@ -242,7 +242,7 @@ export default class Queue extends EventEmitter {
     };
 
     const msg = await this.collection.findOneAndUpdate(query, update, {
-	  returnDocument: 'after'
+	    returnDocument: 'after'
     });
     if (!msg.value) {
       throw new Error(`Queue.ping(): Unidentified ack  : ${ack}`);
@@ -270,7 +270,7 @@ export default class Queue extends EventEmitter {
     };
 
     const msg = await this.collection.findOneAndUpdate(query, update, {
-		returnDocument: 'after'
+		  returnDocument: 'after'
     });
     if (!msg.value) {
       throw new Error(`Queue.ack(): Unidentified ack : ${ack}`);
@@ -301,7 +301,7 @@ export default class Queue extends EventEmitter {
     };
 
     const msg = await this.collection.findOneAndUpdate(query, update, {
-		returnDocument: 'after'
+		  returnDocument: 'after'
     });
     if (!msg.value) {
       throw new Error(`Queue.nack(): Unidentified ack : ${ack}`);
