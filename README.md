@@ -260,3 +260,4 @@ channel.subscribe(handler, queueName, SubscriptionOptions): Queue;
 
 Convenience method that returns an instance of a queue bound to the channel.
 
+
