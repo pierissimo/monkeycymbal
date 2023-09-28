@@ -4,7 +4,7 @@ import times = require('lodash/times');
 import merge = require('lodash/merge');
 import bluebird = require('bluebird');
 import assert = require('assert');
-import { MongoClient, Collection } from 'mongodb';
+import { MongoClient, Collection, Sort } from 'mongodb';
 import { EventEmitter } from 'eventemitter3';
 import Debug = require('debug');
 import DateHelper from './DateHelper';
@@ -47,7 +47,7 @@ export default class Queue extends EventEmitter {
   private busyConsumers: number = 0;
   private intervalHandles: any[] = [];
   private handler: Function;
-  public collection: Collection;
+  public collection: Collection<IMessage>;
   private options: ISubscriptionOptions;
   private collectionName: string;
   public deadQueue?: Queue;
@@ -69,10 +69,7 @@ export default class Queue extends EventEmitter {
     if (typeof this.initializePromise !== 'undefined') return this.initializePromise;
     this.initializePromise = new Promise(async resolve => {
       if (!this.client) {
-        this.client = await MongoClient.connect(this.connectionUrl, {
-          useUnifiedTopology: true,
-          useNewUrlParser: true
-        });
+        this.client = await new MongoClient(this.connectionUrl).connect();
       }
 
       this.collection = this.client.db().collection(this.collectionName);
@@ -80,7 +77,7 @@ export default class Queue extends EventEmitter {
       if (!collectionExist) {
         await this.client.db().createCollection(this.collectionName);
       }
-      
+
       if (this.options.deadQueue) {
         if (typeof this.options.deadQueue === 'string') {
           this.deadQueue = new Queue(this.client, this.options.deadQueue);
@@ -176,7 +173,7 @@ export default class Queue extends EventEmitter {
           visible: { $lte: now }
         };
 
-        const sort = {
+        const sort: Sort = {
           priority: -1,
           createdAt: 1
         };
@@ -189,7 +186,7 @@ export default class Queue extends EventEmitter {
         };
         const result = await this.collection.findOneAndUpdate(query, update, {
           sort,
-          returnOriginal: false
+          returnDocument: 'after'
         });
 
         const msg = result.value;
@@ -214,7 +211,7 @@ export default class Queue extends EventEmitter {
           return (await this.get(1, opts))[0];
         }
 
-        return msg;
+        return msg as IMessage;
       },
       { concurrency: 1 }
     );
@@ -242,7 +239,7 @@ export default class Queue extends EventEmitter {
     };
 
     const msg = await this.collection.findOneAndUpdate(query, update, {
-      returnOriginal: false
+	    returnDocument: 'after'
     });
     if (!msg.value) {
       throw new Error(`Queue.ping(): Unidentified ack  : ${ack}`);
@@ -270,7 +267,7 @@ export default class Queue extends EventEmitter {
     };
 
     const msg = await this.collection.findOneAndUpdate(query, update, {
-      returnOriginal: false
+		  returnDocument: 'after'
     });
     if (!msg.value) {
       throw new Error(`Queue.ack(): Unidentified ack : ${ack}`);
@@ -301,7 +298,7 @@ export default class Queue extends EventEmitter {
     };
 
     const msg = await this.collection.findOneAndUpdate(query, update, {
-      returnOriginal: false
+		  returnDocument: 'after'
     });
     if (!msg.value) {
       throw new Error(`Queue.nack(): Unidentified ack : ${ack}`);
@@ -446,7 +443,7 @@ export default class Queue extends EventEmitter {
     const { value: updateMsg } = await this.collection.findOneAndUpdate(
       { _id: msg._id },
       { $push: { errors: errorItem } },
-      { returnOriginal: false }
+      { returnDocument: 'after' }
     );
 
     this.emit(MessageEvent.error, updateMsg, error);
@@ -457,7 +454,7 @@ export default class Queue extends EventEmitter {
     return updateMsg;
   }
 
-  private async createIndexes() {
+  public async createIndexes() {
     const indexPromises = [
       this.collection.createIndex({ deletedAt: 1, visible: 1 }, { background: true }),
       this.collection.createIndex({ deletedAt: 1, createdAt: 1, visible: 1 }, { background: true }),
@@ -477,11 +474,7 @@ export default class Queue extends EventEmitter {
   }
 
   private async doesCollectionExist(name) {
-    return new Promise((resolve, reject) => {
-      return this.client.db().listCollections({ name }).toArray((error, items = []) => {
-        if (error) reject(error)
-        resolve(items.length > 0)
-      });
-    });
+    const collections = await this.client.db().listCollections({ name }).toArray();
+    return collections.length > 0;
   }
 }
