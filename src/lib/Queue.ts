@@ -474,11 +474,7 @@ export default class Queue extends EventEmitter {
   }
 
   private async doesCollectionExist(name) {
-    return new Promise((resolve, reject) => {
-      return this.client.db().listCollections({ name }).toArray((error, items = []) => {
-        if (error) reject(error)
-        resolve(items.length > 0)
-      });
-    });
+    const collections = await this.client.db().listCollections({ name }).toArray();
+    return collections.length > 0;
   }
 }
